@@ -106,6 +106,11 @@ struct sr_arpcache {
     pthread_mutexattr_t attr;
 };
 
+/* Handles an ARP request, either by sending out an ARP request, or by sending
+ * out ICMP host unreachable messages to all concerned.
+ */
+void sr_handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req);
+
 /* Checks if an IP->MAC mapping is in the cache. IP is in network byte order. 
    You must free the returned structure if it is not NULL. */
 struct sr_arpentry *sr_arpcache_lookup(struct sr_arpcache *cache, uint32_t ip);

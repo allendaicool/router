@@ -44,7 +44,7 @@ char* last_msg_iface = NULL;
  * Method: sr_run_unit_tests(..)
  * Scope: global
  *
- * Runs the unit tests against a mocked up transport layer. Here's the story
+ * Runs the unit tests against my mocked up transport layer. Here's the story
  * of the tests that we run:
  *
  * Test 1: Just a toy test, send a packet that's too short to contain an eth
@@ -62,13 +62,28 @@ char* last_msg_iface = NULL;
  * Test 5: ARP request to one of our interfaces. Expect an ARP reply, with the
  * MAC address.
  *
+ * -------------------------- TODO below here -----------------------------
+ *
  * Test 6: TCP to one of our interfaces. ICMP host unreachable response.
+ *
+ * Test 7: ICMP ECHO received.
+ *
+ * Test 8: ICMP packet destination has no forwarding table entry
+ *
+ * Test 9: ARP request times out after 5 requests, ICMP unreachable
+ *
+ * Test 10: ICMP packet that TTL reached 0
+ *
+ * Test 11: Receive an ETH packet with corrupted checksum. Drop it. Expect no
+ * response.
+ *
+ * Test 12: Traceroute to us, expect a valid response.
  *
  *---------------------------------------------------------------------------*/
 
 void sr_run_unit_tests(struct sr_instance* sr /* borrowed */)
 {
-    int num_tests = 4;
+    int num_tests = 5;
     int successful_tests = 0;
 
     puts("\n********\nRUNNING UNIT TESTS\n********\n");
@@ -110,8 +125,8 @@ void sr_run_unit_tests(struct sr_instance* sr /* borrowed */)
 
     uint8_t test_2_dest_eth[ETHER_ADDR_LEN];
     uint8_t test_2_src_eth[ETHER_ADDR_LEN];
-    strncpy(test_2_dest_eth,"eth3ma",ETHER_ADDR_LEN);
-    strncpy(test_2_src_eth,"fedcba",ETHER_ADDR_LEN);
+    memcpy(test_2_dest_eth,"eth3ma",ETHER_ADDR_LEN);
+    memcpy(test_2_src_eth,"fedcba",ETHER_ADDR_LEN);
 
     struct in_addr test_2_src_addr;
     struct in_addr test_2_dest_addr;
@@ -239,6 +254,11 @@ void sr_run_unit_tests(struct sr_instance* sr /* borrowed */)
     memcpy(test_4_dst_eth_hdr->ether_shost,test_4_temp_mac,ETHER_ADDR_LEN);
     memcpy(test_4_dst_eth_hdr->ether_dhost,test_3_dummy_eth,ETHER_ADDR_LEN);
 
+    /* Decrement the TTL field on desired packet */
+
+    sr_ip_hdr_t *test_4_dst_ip_hdr = (sr_ip_hdr_t*)(test_4_dst_buf+sizeof(sr_ethernet_hdr_t));
+    test_4_dst_ip_hdr->ip_ttl --;
+
     /* Run the Unit Test */
 
     successful_tests += sr_unit_test_packet(sr,
@@ -250,6 +270,44 @@ void sr_run_unit_tests(struct sr_instance* sr /* borrowed */)
             test_4_dst_buf,
             test_4_len,
             test_2_result_iface_name);
+
+    /**********************************************************
+     *                    TEST 5
+     ***********************************************************
+     * Receiving an ARP request to one of our interface IPs, and generating a
+     * valid response for it. */
+
+    unsigned int test_5_len = 0;
+
+    struct in_addr test_5_if_addr;
+    
+    inet_aton("5.5.5.4",&test_5_if_addr);
+
+    uint8_t *test_5_buf = sr_build_arp_packet(
+        ether_broadcast, /* destination ethernet address */
+        test_3_dummy_eth, /* source ethernet address */
+        (uint32_t)test_2_gw_addr.s_addr, /* src address */
+        (uint32_t)test_5_if_addr.s_addr, /* dest address */
+        arp_op_request, /* ARP opcode (command) */
+        &test_5_len /* returns the length of the constructed packet */);
+
+    uint8_t *test_5_dst_buf = sr_build_arp_packet(
+        test_3_dummy_eth, /* destination ethernet address */
+        "eth3ma", /* source ethernet address */
+        (uint32_t)test_5_if_addr.s_addr, /* src address */
+        (uint32_t)test_2_gw_addr.s_addr, /* dest address */
+        arp_op_reply, /* ARP opcode (command) */
+        &test_5_len /* returns the length of the constructed packet */);
+
+    successful_tests += sr_unit_test_packet(sr,
+            "5 - Receive broadcast ARP request",
+            test_5_buf,
+            test_5_len,
+            "eth3",
+            1,
+            test_5_dst_buf,
+            test_5_len,
+            "eth3");
 
     /* Output overall test results */
 
@@ -318,7 +376,7 @@ int sr_unit_test_packet(struct sr_instance* sr /* borrowed */,
         else {
             if (dst_len == last_msg_len) {
                 if (memcmp(dst_buf,last_msg_buf,dst_len) == 0) {
-                    puts(KGRN "PASSED. Response body matched expected response.\n" KWHT);
+                    puts(KGRN "PASSED.\n" KWHT);
                     return 1;
                 }
                 else {
@@ -338,7 +396,7 @@ int sr_unit_test_packet(struct sr_instance* sr /* borrowed */,
                             sr_arp_hdr_t* last_arp = (sr_arp_hdr_t*)(last_msg_buf + sizeof(sr_ethernet_hdr_t));
                             if (memcmp(dst_arp,last_arp,sizeof(sr_arp_hdr_t)) == 0) {
                                 /* This should be impossible to reach, unless something fishy happened at the general memcmp */
-                                puts(KGRN "PASSED. ARP headers match. *Note: this is a fishy way to pass the test, explore this*\n" KWHT);
+                                puts(KBLU "PASSED. ARP headers match. *Note: this is a fishy way to pass the test, explore this*\n" KWHT);
                                 return 1;
                             }
 
@@ -394,7 +452,52 @@ int sr_unit_test_packet(struct sr_instance* sr /* borrowed */,
                         /* If both ethernet headers are carrying an IP header */
 
                         else if (((sr_ethernet_hdr_t*)dst_buf)->ether_type == htons(ethertype_ip)) {
-                            puts("Contains an IP req");
+
+                            /* check if the IP headers match */
+
+                            sr_ip_hdr_t* dst_ip = (sr_ip_hdr_t*)(dst_buf + sizeof(sr_ethernet_hdr_t));
+                            sr_ip_hdr_t* last_ip = (sr_ip_hdr_t*)(last_msg_buf + sizeof(sr_ethernet_hdr_t));
+                            if (memcmp(dst_ip,last_ip,sizeof(sr_ip_hdr_t)) == 0) {
+                                /* This should be impossible to reach, unless something fishy happened at the general memcmp */
+                                puts(KBLU "PASSED. IP headers match. *Note: this is a fishy way to pass the test, explore this*\n" KWHT);
+                                return 1;
+                            }
+
+                            /* if ARP headers don't match, print differences */
+
+                            else {
+                                puts(KRED "IP headers don't match. Printing differences:");
+
+                                if (dst_ip->ip_ttl != last_ip->ip_ttl) {
+                                    printf("Desired TTL %i, sent TTL %i\n",dst_ip->ip_ttl,last_ip->ip_ttl);
+                                }
+                                if (dst_ip->ip_p != last_ip->ip_p) {
+                                    printf("Desired protocol %x, sent protocol %x\n",dst_ip->ip_p,last_ip->ip_p);
+                                }
+                                if (dst_ip->ip_sum != last_ip->ip_sum) {
+                                    printf("Desired sum %i, sent sum %x\n",dst_ip->ip_sum,last_ip->ip_sum);
+                                }
+                                if (dst_ip->ip_src != last_ip->ip_src) {
+                                    printf("Desired source IP ");
+                                    struct in_addr temp_in_addr;
+                                    temp_in_addr.s_addr = dst_ip->ip_src;
+                                    printf("%s",inet_ntoa(temp_in_addr));
+                                    printf(", sent source IP ");
+                                    temp_in_addr.s_addr = last_ip->ip_src;
+                                    printf("%s\n",inet_ntoa(temp_in_addr));
+                                }
+                                if (dst_ip->ip_dst != last_ip->ip_dst) {
+                                    printf("Desired target IP ");
+                                    struct in_addr temp_in_addr;
+                                    temp_in_addr.s_addr = dst_ip->ip_dst;
+                                    printf("%s",inet_ntoa(temp_in_addr));
+                                    printf(", sent target IP ");
+                                    temp_in_addr.s_addr = last_ip->ip_dst;
+                                    printf("%s\n",inet_ntoa(temp_in_addr));
+                                }
+
+                                puts("FAILED\n" KWHT);
+                            }
                         }
                     }
                     else {
@@ -426,7 +529,7 @@ int sr_unit_test_packet(struct sr_instance* sr /* borrowed */,
     }
     else {
         if (last_msg_buf == NULL) {
-            puts(KGRN "PASSED. Expected no response, and received none.\n" KWHT);
+            puts(KGRN "PASSED.\n" KWHT);
             return 1;
         }
         else {

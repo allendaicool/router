@@ -46,10 +46,7 @@
 #include "vnscommand.h"
 
 static void sr_log_packet(struct sr_instance* , uint8_t* , int );
-static int  sr_arp_req_not_for_us(struct sr_instance* sr,
-                                  uint8_t * packet /* lent */,
-                                  unsigned int len,
-                                  char* interface  /* lent */);
+int sr_generate_hwinfo(struct sr_instance* sr);
 
 /*-----------------------------------------------------------------------------
  * Method: sr_connect_to_server()
@@ -82,30 +79,42 @@ int sr_connect_to_server(struct sr_instance* sr,unsigned short port,
 
 int sr_generate_hwinfo(struct sr_instance* sr)
 {
-    int num_entries = 2;
+    int num_entries = 5;
 
     /* REQUIRES */
     assert(sr);
 
+    struct in_addr addr1;
+    struct in_addr addr2;
+    struct in_addr addr3;
+    struct in_addr addr4;
+    struct in_addr addr5;
+    
+    inet_aton("5.5.5.0",&addr1);
+    inet_aton("5.5.5.1",&addr2);
+    inet_aton("5.5.5.3",&addr3);
+    inet_aton("5.5.5.4",&addr4);
+    inet_aton("5.5.5.5",&addr5);
+
     sr_add_interface(sr,"eth0");
-    sr_set_ether_ip(sr,(uint32_t)1);
-    sr_set_ether_addr(sr,"eth0ma");
+    sr_set_ether_ip(sr,addr1.s_addr);
+    sr_set_ether_addr(sr,(const unsigned char*)"eth0ma");
 
     sr_add_interface(sr,"eth1");
-    sr_set_ether_ip(sr,(uint32_t)1);
-    sr_set_ether_addr(sr,"eth1ma");
+    sr_set_ether_ip(sr,addr2.s_addr);
+    sr_set_ether_addr(sr,(const unsigned char*)"eth1ma");
 
     sr_add_interface(sr,"eth2");
-    sr_set_ether_ip(sr,(uint32_t)1);
-    sr_set_ether_addr(sr,"eth2ma");
+    sr_set_ether_ip(sr,addr3.s_addr);
+    sr_set_ether_addr(sr,(const unsigned char*)"eth2ma");
 
     sr_add_interface(sr,"eth3");
-    sr_set_ether_ip(sr,(uint32_t)1);
-    sr_set_ether_addr(sr,"eth3ma");
+    sr_set_ether_ip(sr,addr4.s_addr);
+    sr_set_ether_addr(sr,(const unsigned char*)"eth3ma");
 
     sr_add_interface(sr,"eth4");
-    sr_set_ether_ip(sr,(uint32_t)1);
-    sr_set_ether_addr(sr,"eth4ma");
+    sr_set_ether_ip(sr,addr5.s_addr);
+    sr_set_ether_addr(sr,(const unsigned char*)"eth4ma");
 
     printf("Router interfaces:\n");
     sr_print_if_list(sr);
@@ -159,7 +168,7 @@ sr_ether_addrs_match_interface( struct sr_instance* sr, /* borrowed */
     }
 
     if ( memcmp( ether_hdr->ether_shost, iface->addr, ETHER_ADDR_LEN) != 0 ) {
-        fprintf( stderr, "** Error, source address %s does not match %s (%s)\n",&(ether_hdr->ether_shost),name,&(iface->addr));
+        fprintf( stderr, "** Error, source address %s does not match %s (%s)\n",(char*)&(ether_hdr->ether_shost),name,(char*)&(iface->addr));
         sr_print_if_list(sr);
         return 0;
     }
@@ -188,9 +197,6 @@ int sr_send_packet(struct sr_instance* sr /* borrowed */,
                          unsigned int len,
                          const char* iface /* borrowed */)
 {
-    c_packet_header *sr_pkt;
-    unsigned int total_len =  len + (sizeof(c_packet_header));
-
     /* REQUIRES */
     assert(sr);
     assert(buf);
@@ -243,34 +249,3 @@ void sr_log_packet(struct sr_instance* sr, uint8_t* buf, int len )
     sr_dump(sr->logfile, &h, buf);
     fflush(sr->logfile);
 } /* -- sr_log_packet -- */
-
-/*-----------------------------------------------------------------------------
- * Method: sr_arp_req_not_for_us()
- * Scope: Local
- *
- *---------------------------------------------------------------------------*/
-
-int  sr_arp_req_not_for_us(struct sr_instance* sr,
-                           uint8_t * packet /* lent */,
-                           unsigned int len,
-                           char* interface  /* lent */)
-{
-    struct sr_if* iface = sr_get_interface(sr, interface);
-    struct sr_ethernet_hdr* e_hdr = 0;
-    struct sr_arp_hdr*       a_hdr = 0;
-
-    if (len < sizeof(struct sr_ethernet_hdr) + sizeof(struct sr_arp_hdr) )
-    { return 0; }
-
-    assert(iface);
-
-    e_hdr = (struct sr_ethernet_hdr*)packet;
-    a_hdr = (struct sr_arp_hdr*)(packet + sizeof(struct sr_ethernet_hdr));
-
-    if ( (e_hdr->ether_type == htons(ethertype_arp)) &&
-            (a_hdr->ar_op      == htons(arp_op_request))   &&
-            (a_hdr->ar_tip     != iface->ip ) )
-    { return 1; }
-
-    return 0;
-} /* -- sr_arp_req_not_for_us -- */

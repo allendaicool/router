@@ -145,8 +145,6 @@ void sr_handlepacket_arp(struct sr_instance* sr,
 
     /* Endianness */
     unsigned short ar_op = ntohs(arp_hdr->ar_op);
-    uint32_t ar_sip = ntohl(arp_hdr->ar_sip);
-    uint32_t ar_tip = ntohl(arp_hdr->ar_tip);
 
     switch (ar_op) {
 
@@ -156,6 +154,40 @@ void sr_handlepacket_arp(struct sr_instance* sr,
 
         case arp_op_request:
             puts("received ARP OP request.");
+
+            /* The VNS transport layer shouldn't allow any packets that aren't for our
+             * interface, but it's still worth checking, just in case something goes wrong
+             * of *gasp* we write a unit test about it */
+
+            struct sr_if* iface = sr_get_interface(sr, interface);
+            if (iface->ip == ntohl(arp_hdr->ar_tip)) {
+
+                /* Flip around the source and destination IP, keeping both in network order */
+
+                uint32_t ip_buf = arp_hdr->ar_tip;
+                arp_hdr->ar_tip = arp_hdr->ar_sip;
+                arp_hdr->ar_sip = ip_buf;
+
+                /* Flip around source and dest MAC on the ETH header */
+
+                uint8_t ether_buf[ETHER_ADDR_LEN];
+                memcpy(ether_buf,eth_hdr->ether_shost,ETHER_ADDR_LEN);
+                memcpy(eth_hdr->ether_shost,iface->addr,ETHER_ADDR_LEN);
+                memcpy(eth_hdr->ether_dhost,ether_buf,ETHER_ADDR_LEN);
+
+                /* Change ARP operation to a reply */
+
+                arp_hdr->ar_op = htons(arp_op_reply);
+
+                /* Send the modified packet back out */
+
+                puts("sending ARP OP reply");
+                sr_send_packet(sr, (uint8_t*)eth_hdr, len + sizeof(sr_ethernet_hdr_t), interface);
+            }
+            else {
+                puts("ARP request received that's not for us.");
+            }
+
             break;
 
         /*
@@ -231,7 +263,6 @@ void sr_handlepacket_ip(struct sr_instance* sr,
     ip_hdr = (sr_ip_hdr_t*)packet;
 
     /* Endianness */
-    uint32_t ip_src = ntohl(ip_hdr->ip_src);
     uint32_t ip_dst = ntohl(ip_hdr->ip_dst);
 
     /* Check for a corrupt packet */
@@ -299,19 +330,19 @@ void sr_handlepacket_ip(struct sr_instance* sr,
 
         /* Lookups in the ARP cache keep IP addresses in network byte order, so we need to convert. */
 
-        struct sr_arpentry *entry = sr_arpcache_lookup(&(sr->cache), rt_dst->gw.s_addr);
+        struct sr_arpentry *entry = sr_arpcache_lookup(&(sr->cache), htonl(rt_dst->gw.s_addr));
 
         if (entry) {
             /* use next_hop_ip->mac mapping in entry to send the packet */
             puts("ARP cache entry exists");
             memcpy(eth_hdr->ether_dhost,entry->mac,ETHER_ADDR_LEN);
-            sr_send_packet(sr, eth_hdr, len + sizeof(sr_ethernet_hdr_t), rt_dst->interface);
+            sr_send_packet(sr, (uint8_t*)eth_hdr, len + sizeof(sr_ethernet_hdr_t), rt_dst->interface);
 
             free(entry);
         }
         else {
             puts("ARP cache entry doesn't exist. Queuing.");
-            struct sr_arpreq *req = sr_arpcache_queuereq(&sr->cache, rt_dst->gw.s_addr, eth_hdr, len + sizeof(sr_ethernet_hdr_t), rt_dst->interface);
+            struct sr_arpreq *req = sr_arpcache_queuereq(&sr->cache, htonl(rt_dst->gw.s_addr), (uint8_t*)eth_hdr, len + sizeof(sr_ethernet_hdr_t), rt_dst->interface);
             sr_handle_arpreq(sr,req);
         }
 
@@ -411,7 +442,7 @@ uint8_t *sr_build_icmp_packet(
 
     ip_hdr->ip_src = htonl(ip_src);
     ip_hdr->ip_dst = htonl(ip_dst);
-    ip_hdr->ip_p = htons(ip_protocol_icmp);
+    ip_hdr->ip_p = ip_protocol_icmp;
     ip_hdr->ip_ttl = (uint8_t)64; /* one byte, no need for htons */
 
     icmp_hdr->icmp_type = icmp_type;
@@ -504,7 +535,7 @@ uint8_t *sr_build_dummy_tcp_packet(
 
     ip_hdr->ip_src = htonl(ip_src);
     ip_hdr->ip_dst = htonl(ip_dst);
-    ip_hdr->ip_p = htons(ip_protocol_tcp);
+    ip_hdr->ip_p = ip_protocol_tcp;
     ip_hdr->ip_ttl = (uint8_t)64;
 
     return buf;

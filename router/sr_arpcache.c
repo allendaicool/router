@@ -59,7 +59,7 @@ void sr_handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
             /* Broadcast our ARP request on our interface */
 
             struct in_addr temp;
-            temp.s_addr = req->ip;
+            temp.s_addr = ntohl(req->ip);
             printf("Send ARP to %s\n",inet_ntoa(temp));
 
             unsigned int len;
@@ -67,7 +67,7 @@ void sr_handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
                 ether_broadcast, /* destination ethernet address */
                 sr_get_interface(sr, req->packets->iface)->addr, /* source ethernet address */
                 *((uint32_t*)sr->host), /* src address */
-                req->ip, /* dest address */
+                ntohl(req->ip), /* dest address, which is converted to network order from host ordering */
                 arp_op_request, /* ARP opcode (command) */
                 &len /* returns the length of the constructed packet */);
 
