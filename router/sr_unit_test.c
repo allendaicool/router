@@ -24,6 +24,7 @@
 #include "sr_router.h"
 #include "sr_unit_test.h"
 #include "sr_protocol.h"
+#include "sr_utils.h"
 
 #define KNRM  "\x1B[0m"
 #define KRED  "\x1B[31m"
@@ -47,7 +48,10 @@ char* last_msg_iface = NULL;
  * Runs the unit tests against my mocked up transport layer. Here's the story
  * of the tests that we run:
  *
- * Test 1: Just a toy test, send a packet that's too short to contain an eth
+ * We use a dummy host A (ip=10.0.1.1, mac="host_a") and host B (ip=4.3.2.5, mac="host_b"), 
+ * sending through our interface eth3 (ip=, mac="eth3ma").
+ *
+ * Test 1: Just a toy test, try to send a packet that's too short to contain an eth
  * header. Will be dropped. Expect no response.
  *
  * Tests 2,3,4: First, we send a dummy TCP packet to 4.3.2.5, which should be
@@ -62,252 +66,805 @@ char* last_msg_iface = NULL;
  * Test 5: ARP request to one of our interfaces. Expect an ARP reply, with the
  * MAC address.
  *
- * -------------------------- TODO below here -----------------------------
+ * Test 6: TCP to one of our interfaces. ICMP port unreachable response.
  *
- * Test 6: TCP to one of our interfaces. ICMP host unreachable response.
+ * Test 7: ICMP ECHO received. Generates an ECHO response.
  *
- * Test 7: ICMP ECHO received.
+ * Test 8: ICMP packet that TTL reached 0
  *
- * Test 8: ICMP packet destination has no forwarding table entry
- *
- * Test 9: ARP request times out after 5 requests, ICMP unreachable
- *
- * Test 10: ICMP packet that TTL reached 0
- *
- * Test 11: Receive an ETH packet with corrupted checksum. Drop it. Expect no
+ * Test 9: Receive an ETH packet with corrupted checksum. Drop it. Expect no
  * response.
  *
- * Test 12: Traceroute to us, expect a valid response.
+ * Test 10: ICMP packet destination has no forwarding table entry. ICMP host
+ * unreachable response.
+ *
+ * Test 11: ARP request times out after 5 requests, ICMP unreachable sent out
  *
  *---------------------------------------------------------------------------*/
 
+typedef struct sr_unit_test_shared_state {
+
+    /* MAC addresses */
+
+    uint8_t host_a_gw_eth[ETHER_ADDR_LEN];
+    uint8_t me_a_eth[ETHER_ADDR_LEN];
+
+    uint8_t host_b_gw_eth[ETHER_ADDR_LEN];
+    uint8_t me_b_eth[ETHER_ADDR_LEN];
+
+    /* Broadcast eth for ARP reqs */
+
+    uint8_t broadcast_eth[ETHER_ADDR_LEN];
+
+    /* IPs */
+
+    uint32_t host_a_ip;
+    uint32_t me_a_ip;
+
+    uint32_t host_b_ip;
+    uint32_t me_b_ip;
+
+    uint32_t host_b_gw_ip;
+
+    uint32_t host_c_ip;
+
+    /* Interfaces */
+
+    char* if_a_name;
+    char* if_b_name;
+
+    /* References to our router instance */
+
+    struct sr_instance *sr;
+
+} sr_unit_test_shared_state_t;
+
+/* Setup the shared state for the unit tests, to avoid having to do a bunch of
+ * redundant and confusing invention of ETH and MAC addresses for imaginary packets. */
+
+sr_unit_test_shared_state_t *sr_setup_unit_test_shared_state(struct sr_instance *sr) {
+    sr_unit_test_shared_state_t* shared_state = malloc(sizeof(sr_unit_test_shared_state_t));
+
+    /* Setup MAC address arrays */
+
+    memcpy(shared_state->host_a_gw_eth,"host_a",ETHER_ADDR_LEN);
+    memcpy(shared_state->me_a_eth,"eth0ma",ETHER_ADDR_LEN);
+
+    memcpy(shared_state->host_b_gw_eth,"host_b",ETHER_ADDR_LEN);
+    memcpy(shared_state->me_b_eth,"eth3ma",ETHER_ADDR_LEN);
+
+    /* Setup broadcast MAC */
+
+    int i;
+    for (i = 0; i < ETHER_ADDR_LEN; i++) {
+        shared_state->broadcast_eth[i] = ~((uint8_t)0);
+    }
+
+    /* Parse in the IPs we'll be using */
+
+    struct in_addr host_a_addr;
+    struct in_addr host_b_addr;
+    struct in_addr host_b_gw_addr;
+    struct in_addr host_c_addr;
+    
+    inet_aton("10.0.1.1",&host_a_addr);
+    inet_aton("4.3.2.5",&host_b_addr);
+    inet_aton("4.3.2.0",&host_b_gw_addr);
+    inet_aton("4.3.0.0",&host_c_addr);
+
+    shared_state->host_a_ip = (uint32_t)host_a_addr.s_addr;
+    shared_state->me_a_ip = sr_get_interface(sr, "eth0")->ip;
+
+    shared_state->host_b_ip = (uint32_t)host_b_addr.s_addr;
+    shared_state->host_b_gw_ip = (uint32_t)host_b_gw_addr.s_addr;
+    shared_state->me_b_ip = sr_get_interface(sr, "eth3")->ip;
+
+    shared_state->host_c_ip = (uint32_t)host_c_addr.s_addr;
+
+    /* Create the name of the interfaces we're using */
+
+    shared_state->if_a_name = strdup("eth0");
+    shared_state->if_b_name = strdup("eth3");
+
+    /* Drop in our router instance reference */
+
+    shared_state->sr = sr;
+
+    return shared_state;
+}
+
+/**********************************************************
+ *                    TEST 1
+ ***********************************************************
+ * Test a packet that is too short to contain an ethernet header.
+ * This should provoke no response. */
+
+int sr_unit_test_1(sr_unit_test_shared_state_t *shared_state) {
+    unsigned int test_1_len = 5;
+    uint8_t* test_1_buf = malloc(test_1_len);
+
+    /* Run the Unit Test */
+
+    int result = sr_unit_test_packet(shared_state->sr,
+            "1 - Packet too short to contain ethernet header",
+            test_1_buf,
+            test_1_len,
+            shared_state->if_a_name,
+            0, /* we don't want a response */
+            NULL,
+            0,
+            NULL,
+            0);
+
+    free(test_1_buf);
+
+    return result;
+}
+
+/**********************************************************
+ *                    TEST 2
+ ***********************************************************
+ * Here's a legitimate ethernet header, carrying a TCP packet A->B to
+ * an interface we have in the routing table, but don't yet have an ARP
+ * cached value for. This should generate an ARP request. In TEST 3, 
+ * we'll mock an ARP response, and check that the packet gets sent from 
+ * the queue. */
+
+int sr_unit_test_2(sr_unit_test_shared_state_t *shared_state) {
+
+    /* Here's our dummy TCP packet, passing through from host A
+     * to host B, which should forward it through to the gateway 
+     * 4.3.2.0 */
+    
+    sr_constructed_packet_t *incoming_tcp_packet = sr_build_eth_packet(
+        shared_state->host_a_gw_eth,
+        shared_state->me_a_eth,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            shared_state->host_a_ip,
+            shared_state->host_b_ip,
+            ip_protocol_tcp,
+
+            sr_build_dummy_tcp_packet()
+        )
+    );
+
+    /* Here's the outgoing ARP packet, requesting the IP addr
+     * of host B GW, which will go out through the interface matching
+     * host B's IP in out gateway table. */
+
+    sr_constructed_packet_t *outgoing_arp_packet = sr_build_eth_packet(
+        shared_state->me_b_eth,
+        shared_state->broadcast_eth,
+        ethertype_arp,
+
+        sr_build_arp_packet(
+            shared_state->me_b_ip,
+            shared_state->host_b_gw_ip,
+            arp_op_request,
+            NULL
+        )
+    );
+
+    /* Run the Unit Test */
+
+    int result = sr_unit_test_packet(shared_state->sr,
+            "2 - TCP forward, but not in ARP cache",
+            incoming_tcp_packet->buf,
+            incoming_tcp_packet->len,
+            shared_state->if_a_name,
+            1,
+            outgoing_arp_packet->buf,
+            outgoing_arp_packet->len,
+            shared_state->if_b_name,
+            0);
+
+    return result;
+}
+
+/**********************************************************
+ *                    TEST 3
+ ***********************************************************
+ * Here we mock an ARP response to the request that the last test should
+ * have generated. We expect that on the receipt of the response, the packet
+ * that we buffered from TEST 2 is sent along. */
+
+int sr_unit_test_3(sr_unit_test_shared_state_t *shared_state) {
+
+    /* Here's the incoming ARP packet, giving us the MAC addr
+     * of host B */
+
+    sr_constructed_packet_t *incoming_arp_packet = sr_build_eth_packet(
+        shared_state->host_b_gw_eth,
+        shared_state->me_b_eth,
+        ethertype_arp,
+
+        sr_build_arp_packet(
+            shared_state->host_b_gw_ip,
+            shared_state->me_b_ip,
+            arp_op_reply,
+            NULL
+        )
+    );
+
+    /* Here's our dummy TCP packet, being sent out as soon as we
+     * get a reply from host B giving us an Eth address. */
+    
+    sr_constructed_packet_t *outgoing_tcp_packet = sr_build_eth_packet(
+        shared_state->me_b_eth,
+        shared_state->host_b_gw_eth,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            shared_state->host_a_ip,
+            shared_state->host_b_ip,
+            ip_protocol_tcp,
+
+            sr_build_dummy_tcp_packet()
+        )
+    );
+
+    /* decrement the TTL field on the packet we just made */
+
+    sr_ip_hdr_t* ip_hdr = ((sr_ip_hdr_t*)((outgoing_tcp_packet->buf)+sizeof(sr_ethernet_hdr_t)));
+    ip_hdr->ip_ttl--;
+    ip_hdr->ip_sum = 0;
+    ip_hdr->ip_sum = cksum((const void*)ip_hdr,sizeof(sr_ip_hdr_t));
+
+    /* Run the Unit Test */
+
+    int result = sr_unit_test_packet(shared_state->sr,
+            "3 - ARP reply received, forward packet waiting on reply",
+            incoming_arp_packet->buf,
+            incoming_arp_packet->len,
+            shared_state->if_b_name,
+            1,
+            outgoing_tcp_packet->buf,
+            outgoing_tcp_packet->len,
+            shared_state->if_b_name,
+            0);
+
+    return result;
+}
+
+/**********************************************************
+ *                    TEST 4
+ ***********************************************************
+ * Now we test whether we can go look up the existing ARP cache entry for
+ * a new incoming packet going out along the same gateway we just did our
+ * ARP exchange for. */
+
+int sr_unit_test_4(sr_unit_test_shared_state_t *shared_state) {
+
+    /* Here's our dummy TCP packet, passing through from host A
+     * to host B, which should forward it through to the gateway 
+     * 4.3.2.0 */
+    
+    sr_constructed_packet_t *incoming_tcp_packet = sr_build_eth_packet(
+        shared_state->host_a_gw_eth,
+        shared_state->me_a_eth,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            shared_state->host_a_ip,
+            shared_state->host_b_ip,
+            ip_protocol_tcp,
+
+            sr_build_dummy_tcp_packet()
+        )
+    );
+    
+    /* Here's our outgoing tcp packet, which is identical except for
+     * a change in the ethernet header to forward it to the next hop,
+     * and coming out of a different interface, and having a slightly
+     * smaller TTL field. */
+    
+    sr_constructed_packet_t *outgoing_tcp_packet = sr_build_eth_packet(
+        shared_state->me_b_eth,
+        shared_state->host_b_gw_eth,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            shared_state->host_a_ip,
+            shared_state->host_b_ip,
+            ip_protocol_tcp,
+
+            sr_build_dummy_tcp_packet()
+        )
+    );
+
+    /* decrement the TTL field on the packet we just made */
+
+    sr_ip_hdr_t* ip_hdr = ((sr_ip_hdr_t*)((outgoing_tcp_packet->buf)+sizeof(sr_ethernet_hdr_t)));
+    ip_hdr->ip_ttl--;
+    ip_hdr->ip_sum = 0;
+    ip_hdr->ip_sum = cksum((const void*)ip_hdr,sizeof(sr_ip_hdr_t));
+
+    /* Run the Unit Test */
+
+    int result = sr_unit_test_packet(shared_state->sr,
+            "4 - Forward packet with ARP cache present",
+            incoming_tcp_packet->buf,
+            incoming_tcp_packet->len,
+            shared_state->if_a_name,
+            1,
+            outgoing_tcp_packet->buf,
+            outgoing_tcp_packet->len,
+            shared_state->if_b_name,
+            0);
+
+    return result;
+}
+
+/**********************************************************
+ *                    TEST 5
+ ***********************************************************
+ * Receiving an ARP request to one of our interface IPs, and generating a
+ * valid response for it. */
+
+int sr_unit_test_5(sr_unit_test_shared_state_t *shared_state) {
+
+    /* Here's the incoming ARP request packet, asking for our MAC
+     * from host B's GW (which is, for the sake of testing, too dumb 
+     * to get it from the packets we just sent to it) */
+
+    sr_constructed_packet_t *incoming_arp_packet = sr_build_eth_packet(
+        shared_state->host_b_gw_eth,
+        shared_state->broadcast_eth,
+        ethertype_arp,
+
+        sr_build_arp_packet(
+            shared_state->host_b_gw_ip,
+            shared_state->me_b_ip,
+            arp_op_request,
+            NULL
+        )
+    );
+
+    /* Reply ARP, back to the GW for host B */
+
+    sr_constructed_packet_t *outgoing_arp_packet = sr_build_eth_packet(
+        shared_state->me_b_eth,
+        shared_state->host_b_gw_eth,
+        ethertype_arp,
+
+        sr_build_arp_packet(
+            shared_state->me_b_ip,
+            shared_state->host_b_gw_ip,
+            arp_op_reply,
+            NULL
+        )
+    );
+
+    int result = sr_unit_test_packet(shared_state->sr,
+            "5 - Receive broadcast ARP request",
+            incoming_arp_packet->buf,
+            incoming_arp_packet->len,
+            shared_state->if_b_name,
+            1,
+            outgoing_arp_packet->buf,
+            outgoing_arp_packet->len,
+            shared_state->if_b_name,
+            0);
+
+    return result;
+}
+
+/**********************************************************
+ *                    TEST 6
+ ***********************************************************
+ * Receiving a TCP request to one of our interfaces. This triggers
+ * an ICMP port unreachable response. */
+
+int sr_unit_test_6(sr_unit_test_shared_state_t *shared_state) {
+
+    /* Here's a dummy TCP packet to our interface for host B */
+    
+    sr_constructed_packet_t *incoming_tcp_packet = sr_build_eth_packet(
+        shared_state->host_b_gw_eth,
+        shared_state->me_b_eth,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            shared_state->host_b_ip,
+            shared_state->me_b_ip,
+            ip_protocol_tcp,
+
+            sr_build_dummy_tcp_packet()
+        )
+    );
+    
+    /* Here's our outgoing icmp packet, with a port unreachable
+     * response */
+    
+    sr_constructed_packet_t *outgoing_icmp_packet = sr_build_eth_packet(
+        shared_state->me_b_eth,
+        shared_state->host_b_gw_eth,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            shared_state->me_b_ip,
+            shared_state->host_b_ip,
+            ip_protocol_icmp,
+
+            sr_build_icmp_t3_packet(
+                ICMP_TYPE_PORT_UNREACHABLE,
+                ICMP_CODE_PORT_UNREACHABLE,
+                ((uint8_t*)(incoming_tcp_packet->buf))+sizeof(sr_ethernet_hdr_t)
+            )
+        )
+    );
+
+    /* decrement the TTL field on the packet inside the ICMP packet we just made. */
+
+    sr_ip_hdr_t* ip_hdr = ((sr_ip_hdr_t*)((outgoing_icmp_packet->buf)+sizeof(sr_ethernet_hdr_t)+sizeof(sr_ip_hdr_t)+sizeof(sr_icmp_t3_hdr_t)-ICMP_DATA_SIZE));
+    ip_hdr->ip_ttl--;
+    ip_hdr->ip_sum = 0;
+    ip_hdr->ip_sum = cksum((const void*)ip_hdr,sizeof(sr_ip_hdr_t));
+
+    int result = sr_unit_test_packet(shared_state->sr,
+            "6 - Receive TCP request, report ICMP port unreachable",
+            incoming_tcp_packet->buf,
+            incoming_tcp_packet->len,
+            shared_state->if_b_name,
+            1,
+            outgoing_icmp_packet->buf,
+            outgoing_icmp_packet->len,
+            shared_state->if_b_name,
+            0);
+
+    return result;
+}
+
+/**********************************************************
+ *                    TEST 7
+ ***********************************************************
+ * Receiving a ICMP echo request to one of our interfaces. This triggers
+ * an ICMP echo response. */
+
+int sr_unit_test_7(sr_unit_test_shared_state_t *shared_state) {
+
+    /* Here's our incomin icmp packet, with a port unreachable
+     * response */
+    
+    sr_constructed_packet_t *incoming_icmp_packet = sr_build_eth_packet(
+        shared_state->host_b_gw_eth,
+        shared_state->me_b_eth,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            shared_state->host_b_ip,
+            shared_state->me_b_ip,
+            ip_protocol_icmp,
+
+            sr_build_icmp_packet(
+                ICMP_TYPE_ECHO_MESSAGE,
+                ICMP_CODE_ECHO_MESSAGE,
+                NULL
+            )
+        )
+    );
+
+    /* Here's our outgoing icmp packet, with a port unreachable
+     * response */
+    
+    sr_constructed_packet_t *outgoing_icmp_packet = sr_build_eth_packet(
+        shared_state->me_b_eth,
+        shared_state->host_b_gw_eth,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            shared_state->me_b_ip,
+            shared_state->host_b_ip,
+            ip_protocol_icmp,
+
+            sr_build_icmp_packet(
+                ICMP_TYPE_ECHO_REPLY,
+                ICMP_CODE_ECHO_REPLY,
+                NULL
+            )
+        )
+    );
+
+    int result = sr_unit_test_packet(shared_state->sr,
+            "7 - Receive ICMP echo request, make ICMP echo response",
+            incoming_icmp_packet->buf,
+            incoming_icmp_packet->len,
+            shared_state->if_b_name,
+            1,
+            outgoing_icmp_packet->buf,
+            outgoing_icmp_packet->len,
+            shared_state->if_b_name,
+            0);
+
+    return result;
+}
+
+/**********************************************************
+ *                    TEST 8
+ ***********************************************************
+ * We pass in a TCP packet from host B with 
+ * a new incoming packet going out along the same gateway we just did our
+ * ARP exchange for. */
+
+int sr_unit_test_8(sr_unit_test_shared_state_t *shared_state) {
+
+    /* Here's our dummy TCP packet, passing through from host B
+     * to host A, which should never make it to an ARP request, because
+     * the TTL on this packet is 1, so it dies here. An ICMP expired is
+     * sent back to host B (though its gateway in our ARP table). */
+    
+    sr_constructed_packet_t *incoming_tcp_packet = sr_build_eth_packet(
+        shared_state->host_b_gw_eth,
+        shared_state->me_b_eth,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            shared_state->host_b_ip,
+            shared_state->host_a_ip,
+            ip_protocol_tcp,
+
+            sr_build_dummy_tcp_packet()
+        )
+    );
+
+    /* set the TTL field on the packet we just made to 1, then recomput cksum */
+
+    sr_ip_hdr_t* ip_hdr = ((sr_ip_hdr_t*)((incoming_tcp_packet->buf)+sizeof(sr_ethernet_hdr_t)));
+    ip_hdr->ip_ttl = 1;
+    ip_hdr->ip_sum = 0;
+    ip_hdr->ip_sum = cksum((const void*)ip_hdr,sizeof(sr_ip_hdr_t));
+
+    /* Here's our outgoing icmp packet, with a timeout response */
+    
+    sr_constructed_packet_t *outgoing_icmp_packet = sr_build_eth_packet(
+        shared_state->me_b_eth,
+        shared_state->host_b_gw_eth,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            shared_state->me_b_ip,
+            shared_state->host_b_ip,
+            ip_protocol_icmp,
+
+            sr_build_icmp_packet(
+                ICMP_TYPE_TTL_EXCEEDED,
+                ICMP_CODE_TTL_EXCEEDED,
+                NULL
+            )
+        )
+    );
+
+    /* Run the Unit Test */
+
+    int result = sr_unit_test_packet(shared_state->sr,
+            "8 - TTL timeout generating an ICMP response",
+            incoming_tcp_packet->buf,
+            incoming_tcp_packet->len,
+            shared_state->if_b_name,
+            1,
+            outgoing_icmp_packet->buf,
+            outgoing_icmp_packet->len,
+            shared_state->if_b_name,
+            0);
+
+    return result;
+}
+
+/**********************************************************
+ *                    TEST 9
+ ***********************************************************
+ * We pass in a ethernet header with a corrupt checksum.
+ * Expect no response. */
+
+int sr_unit_test_9(sr_unit_test_shared_state_t *shared_state) {
+
+    /* Here's our dummy TCP packet, passing through from host B
+     * to host A, which should never make it to an ARP request, because
+     * the TTL on this packet is 1, so it dies here. An ICMP expired is
+     * sent back to host B (though its gateway in our ARP table). */
+    
+    sr_constructed_packet_t *incoming_tcp_packet = sr_build_eth_packet(
+        shared_state->host_b_gw_eth,
+        shared_state->me_b_eth,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            shared_state->host_b_ip,
+            shared_state->host_a_ip,
+            ip_protocol_tcp,
+
+            sr_build_dummy_tcp_packet()
+        )
+    );
+
+    /* Set the TTL field on the packet we just made to 1, which corrupts the checksum */
+
+    ((sr_ip_hdr_t*)((incoming_tcp_packet->buf)+sizeof(sr_ethernet_hdr_t)))->ip_ttl = 1;
+
+    /* Run the Unit Test */
+
+    int result = sr_unit_test_packet(shared_state->sr,
+            "9 - Corrupted checksum",
+            incoming_tcp_packet->buf,
+            incoming_tcp_packet->len,
+            shared_state->if_b_name,
+            0,
+            NULL,
+            0,
+            NULL,
+            0);
+
+    return result;
+}
+
+/**********************************************************
+ *                    TEST 10
+ ***********************************************************
+ * A dummy TCP packet arrives that we have no forwarding table
+ * entry for. Send back an ICMP response that the host is unreachable.
+ * We doctor the rtable to make our default IP actually require a full
+ * match. */
+
+int sr_unit_test_10(sr_unit_test_shared_state_t *shared_state) {
+
+    /* Here's our dummy TCP packet, passing through from host B,
+     * to some interface that doesn't exist in our routing table. */
+    
+    sr_constructed_packet_t *incoming_tcp_packet = sr_build_eth_packet(
+        shared_state->host_b_gw_eth,
+        shared_state->me_b_eth,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            shared_state->host_b_ip,
+            shared_state->host_a_ip,
+            ip_protocol_tcp,
+
+            sr_build_dummy_tcp_packet()
+        )
+    );
+
+    /* Here's our outgoing icmp packet, with a timeout response */
+    
+    sr_constructed_packet_t *outgoing_icmp_packet = sr_build_eth_packet(
+        shared_state->me_b_eth,
+        shared_state->host_b_gw_eth,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            shared_state->me_b_ip,
+            shared_state->host_b_ip,
+            ip_protocol_icmp,
+
+            sr_build_icmp_t3_packet(
+                ICMP_TYPE_HOST_UNREACHABLE,
+                ICMP_CODE_HOST_UNREACHABLE,
+                ((uint8_t*)(incoming_tcp_packet->buf))+sizeof(sr_ethernet_hdr_t)
+            )
+        )
+    );
+
+    /* decrement the TTL field on the packet inside the ICMP packet we just made. */
+
+    sr_ip_hdr_t* ip_hdr = ((sr_ip_hdr_t*)((outgoing_icmp_packet->buf)+sizeof(sr_ethernet_hdr_t)+sizeof(sr_ip_hdr_t)+sizeof(sr_icmp_t3_hdr_t)-ICMP_DATA_SIZE));
+    ip_hdr->ip_ttl--;
+    ip_hdr->ip_sum = 0;
+    ip_hdr->ip_sum = cksum((const void*)ip_hdr,sizeof(sr_ip_hdr_t));
+
+    /* Run the Unit Test */
+
+    int result = sr_unit_test_packet(shared_state->sr,
+            "10 - No forwarding table entry",
+            incoming_tcp_packet->buf,
+            incoming_tcp_packet->len,
+            shared_state->if_b_name,
+            1,
+            outgoing_icmp_packet->buf,
+            outgoing_icmp_packet->len,
+            shared_state->if_b_name,
+            0);
+
+    return result;
+}
+
+/**********************************************************
+ *                    TEST 11
+ ***********************************************************
+ * A TCP packet arrives for somewhere that isn't responding to ARP
+ * requests. We time out the request, and then trigger an ICMP packet,
+ * declaring that the host is unreachable. */
+
+int sr_unit_test_11(sr_unit_test_shared_state_t *shared_state) {
+
+    /* Here's our dummy TCP packet, passing through from host A
+     * to B (something that isn't in our ARP cache). We time the ARP
+     * cache out, and then expect an ICMP host unreachable response. */
+    
+    sr_constructed_packet_t *incoming_tcp_packet = sr_build_eth_packet(
+        shared_state->host_b_gw_eth,
+        shared_state->me_b_eth,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            shared_state->host_b_ip,
+            shared_state->host_c_ip,
+            ip_protocol_tcp,
+
+            sr_build_dummy_tcp_packet()
+        )
+    );
+
+    /* Here's our outgoing icmp packet, with a timeout response */
+    
+    sr_constructed_packet_t *outgoing_icmp_packet = sr_build_eth_packet(
+        shared_state->me_b_eth,
+        shared_state->host_b_gw_eth,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            shared_state->me_b_ip,
+            shared_state->host_b_ip,
+            ip_protocol_icmp,
+
+            sr_build_icmp_t3_packet(
+                ICMP_TYPE_HOST_UNREACHABLE,
+                ICMP_CODE_HOST_UNREACHABLE,
+                ((uint8_t*)(incoming_tcp_packet->buf))+sizeof(sr_ethernet_hdr_t)
+            )
+        )
+    );
+
+    /* decrement the TTL field on the packet inside the ICMP packet we just made. */
+
+    sr_ip_hdr_t* ip_hdr = ((sr_ip_hdr_t*)((outgoing_icmp_packet->buf)+sizeof(sr_ethernet_hdr_t)+sizeof(sr_ip_hdr_t)+sizeof(sr_icmp_t3_hdr_t)-ICMP_DATA_SIZE));
+    ip_hdr->ip_ttl--;
+    ip_hdr->ip_sum = 0;
+    ip_hdr->ip_sum = cksum((const void*)ip_hdr,sizeof(sr_ip_hdr_t));
+
+    /* Run the Unit Test */
+
+    int result = sr_unit_test_packet(shared_state->sr,
+            "11 - Timeout cache entry",
+            incoming_tcp_packet->buf,
+            incoming_tcp_packet->len,
+            shared_state->if_b_name,
+            1,
+            outgoing_icmp_packet->buf,
+            outgoing_icmp_packet->len,
+            shared_state->if_b_name,
+            5);
+
+    return result;
+}
+
+/* Run the actual unit tests */
+
 void sr_run_unit_tests(struct sr_instance* sr /* borrowed */)
 {
-    int num_tests = 5;
+    int num_tests = 11;
     int successful_tests = 0;
 
     puts("\n********\nRUNNING UNIT TESTS\n********\n");
 
-    /**********************************************************
-     *                    TEST 1
-     ***********************************************************
-     * Test a packet that is too short to contain an ethernet header.
-     * This should provoke no response. */
+    /* Setup the shared state */
 
-    unsigned int test_1_len = 5;
-    uint8_t* test_1_buf = malloc(test_1_len);
-    char* test_1_iface_name = "eth0";
+    sr_unit_test_shared_state_t *shared_state = sr_setup_unit_test_shared_state(sr);
 
-    /* Run the Unit Test */
+    /* Do the actual tests */
 
-    successful_tests += sr_unit_test_packet(sr,
-            "1 - Packet too short to contain ethernet header",
-            test_1_buf,
-            test_1_len,
-            test_1_iface_name,
-            0, /* we don't want a response */
-            NULL,
-            0,
-            NULL);
-
-    free(test_1_buf);
-
-    /**********************************************************
-     *                    TEST 2
-     ***********************************************************
-     * Here's a legitimate ethernet header, carrying a TCP packet onward to
-     * an interface we have in the routing table, but don't yet have an ARP
-     * cached value for. This should generate an ARP request. In TEST 3, 
-     * we'll mock an ARP response, and check that the packet gets sent from 
-     * the queue. */
-
-    unsigned int test_2_len = 0;
-
-    uint8_t test_2_dest_eth[ETHER_ADDR_LEN];
-    uint8_t test_2_src_eth[ETHER_ADDR_LEN];
-    memcpy(test_2_dest_eth,"eth3ma",ETHER_ADDR_LEN);
-    memcpy(test_2_src_eth,"fedcba",ETHER_ADDR_LEN);
-
-    struct in_addr test_2_src_addr;
-    struct in_addr test_2_dest_addr;
-    struct in_addr test_2_gw_addr;
-    
-    inet_aton("10.0.1.1",&test_2_src_addr);
-    inet_aton("4.3.2.5",&test_2_dest_addr);
-    inet_aton("4.3.2.0",&test_2_gw_addr);
-
-    /* Here's our dummy TCP packet, passing through to 4.3.2.5,
-     * which should forward it through to the gateway 4.3.2.0 */
-
-    uint8_t* test_2_buf = sr_build_dummy_tcp_packet(
-        test_2_dest_eth, /* destination ethernet address */
-        test_2_src_eth, /* source ethernet address */
-        (uint32_t)test_2_src_addr.s_addr, /* src address */
-        (uint32_t)test_2_dest_addr.s_addr, /* dest address */
-        &test_2_len /* returns the length of the packet */);
-
-    char* test_2_iface_name = "eth0";
-
-    /* Here's the ARP request that we expect to be generated */
-
-    uint8_t ether_broadcast[ETHER_ADDR_LEN];
-    int i;
-    for (i = 0; i < ETHER_ADDR_LEN; i++) {
-        ether_broadcast[i] = ~((uint8_t)0);
-    }
-
-    unsigned int test_2_result_len;
-
-    uint8_t *test_2_result_buf = sr_build_arp_packet(
-        ether_broadcast, /* destination ethernet address */
-        test_2_dest_eth, /* source ethernet address */
-        *((uint32_t*)sr->host), /* src address */
-        (uint32_t)test_2_gw_addr.s_addr, /* dest address */
-        arp_op_request, /* ARP opcode (command) */
-        &test_2_result_len /* returns the length of the constructed packet */);
-
-    char* test_2_result_iface_name = "eth3";
-
-    /* Run the Unit Test */
-
-    successful_tests += sr_unit_test_packet(sr,
-            "2 - TCP forward, but not in ARP cache",
-            test_2_buf,
-            test_2_len,
-            test_2_iface_name,
-            1,
-            test_2_result_buf,
-            test_2_result_len,
-            test_2_result_iface_name);
-
-    /**********************************************************
-     *                    TEST 3
-     ***********************************************************
-     * Here we mock an ARP response to the request that the last test should
-     * have generated. We expect that on the receipt of the response, the packet
-     * that we buffered from TEST 2 is sent along. */
-
-    unsigned int test_3_len = 0;
-
-    uint8_t test_3_dummy_eth[ETHER_ADDR_LEN];
-    char* temp = "hellow"; 
-    memcpy(test_3_dummy_eth,temp,ETHER_ADDR_LEN);
-
-    uint8_t *test_3_buf = sr_build_arp_packet(
-        test_2_src_eth, /* destination ethernet address */
-        test_3_dummy_eth, /* source ethernet address */
-        (uint32_t)test_2_gw_addr.s_addr, /* src address */
-        *((uint32_t*)sr->host), /* dest address */
-        arp_op_reply, /* ARP opcode (command) */
-        &test_3_len /* returns the length of the constructed packet */);
-
-    /* Change out the ethernet header of the test_2_buf */
-
-    sr_ethernet_hdr_t *test_2_eth_hdr = (sr_ethernet_hdr_t*)test_2_buf;
-    memcpy(test_2_eth_hdr->ether_shost,"eth3ma",ETHER_ADDR_LEN);
-    memcpy(test_2_eth_hdr->ether_dhost,test_3_dummy_eth,ETHER_ADDR_LEN);
-
-    /* Run the Unit Test */
-
-    successful_tests += sr_unit_test_packet(sr,
-            "3 - ARP reply received, forward packet waiting on reply",
-            test_3_buf,
-            test_3_len,
-            test_2_result_iface_name,
-            1,
-            test_2_buf,
-            test_2_len,
-            test_2_result_iface_name);
-
-    free(test_2_buf);
-    free(test_3_buf);
-
-    /**********************************************************
-     *                    TEST 4
-     ***********************************************************
-     * Now we test whether we can go look up the existing ARP cache entry for
-     * a new incoming packet going out along the same gateway we just did our
-     * ARP exchange for. */
-
-    unsigned int test_4_len = 0;
-
-    /* Here's another dummy TCP packet, passing through to 4.3.2.5,
-     * which should forward it through to the gateway 4.3.2.0 */
-
-    uint8_t* test_4_buf = sr_build_dummy_tcp_packet(
-        test_2_dest_eth, /* destination ethernet address */
-        test_2_src_eth, /* source ethernet address */
-        (uint32_t)test_2_src_addr.s_addr, /* src address */
-        (uint32_t)test_2_dest_addr.s_addr, /* dest address */
-        &test_4_len /* returns the length of the packet */);
-
-    /* Create a duplicate packet, with the only thing different being
-     * the MAC address */
-
-    uint8_t* test_4_dst_buf = malloc(test_4_len);
-    memcpy(test_4_dst_buf,test_4_buf,test_4_len);
-
-    /* Change out the ethernet header of the test_2_buf */
-
-    sr_ethernet_hdr_t *test_4_dst_eth_hdr = (sr_ethernet_hdr_t*)test_4_dst_buf;
-    char* test_4_temp_mac = "eth3ma";
-    memcpy(test_4_dst_eth_hdr->ether_shost,test_4_temp_mac,ETHER_ADDR_LEN);
-    memcpy(test_4_dst_eth_hdr->ether_dhost,test_3_dummy_eth,ETHER_ADDR_LEN);
-
-    /* Decrement the TTL field on desired packet */
-
-    sr_ip_hdr_t *test_4_dst_ip_hdr = (sr_ip_hdr_t*)(test_4_dst_buf+sizeof(sr_ethernet_hdr_t));
-    test_4_dst_ip_hdr->ip_ttl --;
-
-    /* Run the Unit Test */
-
-    successful_tests += sr_unit_test_packet(sr,
-            "4 - Forward packet with ARP cache present",
-            test_4_buf,
-            test_4_len,
-            test_2_result_iface_name,
-            1,
-            test_4_dst_buf,
-            test_4_len,
-            test_2_result_iface_name);
-
-    /**********************************************************
-     *                    TEST 5
-     ***********************************************************
-     * Receiving an ARP request to one of our interface IPs, and generating a
-     * valid response for it. */
-
-    unsigned int test_5_len = 0;
-
-    struct in_addr test_5_if_addr;
-    
-    inet_aton("5.5.5.4",&test_5_if_addr);
-
-    uint8_t *test_5_buf = sr_build_arp_packet(
-        ether_broadcast, /* destination ethernet address */
-        test_3_dummy_eth, /* source ethernet address */
-        (uint32_t)test_2_gw_addr.s_addr, /* src address */
-        (uint32_t)test_5_if_addr.s_addr, /* dest address */
-        arp_op_request, /* ARP opcode (command) */
-        &test_5_len /* returns the length of the constructed packet */);
-
-    uint8_t *test_5_dst_buf = sr_build_arp_packet(
-        test_3_dummy_eth, /* destination ethernet address */
-        "eth3ma", /* source ethernet address */
-        (uint32_t)test_5_if_addr.s_addr, /* src address */
-        (uint32_t)test_2_gw_addr.s_addr, /* dest address */
-        arp_op_reply, /* ARP opcode (command) */
-        &test_5_len /* returns the length of the constructed packet */);
-
-    successful_tests += sr_unit_test_packet(sr,
-            "5 - Receive broadcast ARP request",
-            test_5_buf,
-            test_5_len,
-            "eth3",
-            1,
-            test_5_dst_buf,
-            test_5_len,
-            "eth3");
+    successful_tests += sr_unit_test_1(shared_state);
+    successful_tests += sr_unit_test_2(shared_state);
+    successful_tests += sr_unit_test_3(shared_state);
+    successful_tests += sr_unit_test_4(shared_state);
+    successful_tests += sr_unit_test_5(shared_state);
+    successful_tests += sr_unit_test_6(shared_state);
+    successful_tests += sr_unit_test_7(shared_state);
+    successful_tests += sr_unit_test_8(shared_state);
+    successful_tests += sr_unit_test_9(shared_state);
+    successful_tests += sr_unit_test_10(shared_state);
+    successful_tests += sr_unit_test_11(shared_state);
 
     /* Output overall test results */
 
@@ -357,7 +914,8 @@ int sr_unit_test_packet(struct sr_instance* sr /* borrowed */,
         const int dst_desired, /* whether or not we should expect a response from the router */
         const uint8_t* dst_buf, /* borrowed */
         const unsigned int dst_len,
-        const char* dst_iface_name /* borrowed */)
+        const char* dst_iface_name /* borrowed */,
+        const int simulate_seconds_before_response)
 {
     printf("------------\nTest name: %s\n------------\n",test_name);
     puts("Clearing sent msg buffer.");
@@ -367,7 +925,34 @@ int sr_unit_test_packet(struct sr_instance* sr /* borrowed */,
             src_buf,
             src_len,
             src_iface_name);
-    puts("----\n");
+    if (simulate_seconds_before_response) {
+        printf("----");
+    }
+    else {
+        puts("----\n");
+    }
+    int i;
+    for (i = 0; i < simulate_seconds_before_response; i++) {
+        puts("\n ** Simulating the passage of a second in the ARP cache. **");
+
+        /* Clear the last-sent timers on all the waiting requests, so they
+         * send again the next time we tell them to send */
+        
+        struct sr_arpreq *req_walker = sr->cache.requests;
+
+        while (req_walker != NULL) {
+            req_walker->sent = 0;
+            req_walker = req_walker->next;
+        }
+
+        /* Run a sweepreqs, as though a second has just passed */
+
+        sr_arpcache_sweepreqs(sr);
+    }
+    if (simulate_seconds_before_response) {
+        puts("----\n");
+    }
+
     if (dst_desired) {
         if (last_msg_buf == NULL) {
             puts(KRED "FAILED. Expected a response, and received none.\n" KWHT);
@@ -458,9 +1043,57 @@ int sr_unit_test_packet(struct sr_instance* sr /* borrowed */,
                             sr_ip_hdr_t* dst_ip = (sr_ip_hdr_t*)(dst_buf + sizeof(sr_ethernet_hdr_t));
                             sr_ip_hdr_t* last_ip = (sr_ip_hdr_t*)(last_msg_buf + sizeof(sr_ethernet_hdr_t));
                             if (memcmp(dst_ip,last_ip,sizeof(sr_ip_hdr_t)) == 0) {
-                                /* This should be impossible to reach, unless something fishy happened at the general memcmp */
-                                puts(KBLU "PASSED. IP headers match. *Note: this is a fishy way to pass the test, explore this*\n" KWHT);
-                                return 1;
+                                if (dst_ip->ip_p == ip_protocol_icmp) { /* one byte, no need for htons */
+                                    sr_icmp_t3_hdr_t* dst_icmp = (sr_icmp_t3_hdr_t*)(dst_buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+                                    sr_icmp_t3_hdr_t* last_icmp = (sr_icmp_t3_hdr_t*)(last_msg_buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+                                    if (dst_icmp->icmp_type == 3) {
+                                        if (memcmp(dst_icmp,last_icmp,sizeof(sr_icmp_t3_hdr_t)) == 0) {
+                                            /* This should be impossible to reach, unless something fishy happened at the general memcmp */
+                                            puts(KBLU "PASSED. ICMP type 3 headers match. *Note: this is a fishy way to pass the test, explore this*\n" KWHT);
+                                            return 1;
+                                        }
+                                    }
+                                    else {
+                                        if (memcmp(dst_icmp,last_icmp,sizeof(sr_icmp_hdr_t)) == 0) {
+                                            /* This should be impossible to reach, unless something fishy happened at the general memcmp */
+                                            puts(KBLU "PASSED. ICMP headers match. *Note: this is a fishy way to pass the test, explore this*\n" KWHT);
+                                            return 1;
+                                        }
+                                    }
+
+                                    puts(KRED "ICMP headers don't match. Printing differences:");
+
+                                    if (dst_icmp->icmp_type != last_icmp->icmp_type) {
+                                        printf("Desired ICMP type %i, sent ICMP type %i\n", dst_icmp->icmp_type, last_icmp->icmp_type);
+                                    }
+                                    if (dst_icmp->icmp_code != last_icmp->icmp_code) {
+                                        printf("Desired ICMP code %i, sent ICMP code %i\n", dst_icmp->icmp_code, last_icmp->icmp_code);
+                                    }
+                                    if (dst_icmp->icmp_type == 3) {
+                                        if (dst_icmp->next_mtu != last_icmp->next_mtu) {
+                                            printf("Desired next mtu %i, sent next mtu %i\n", dst_icmp->next_mtu, last_icmp->next_mtu);
+                                        }
+                                        if (memcmp(dst_icmp->data,last_icmp->data,ICMP_DATA_SIZE) != 0) {
+                                            puts("Desired ICMP body:");
+                                            int i;
+                                            for (i = 0; i < ICMP_DATA_SIZE; i++) {
+                                                printf("%x ",dst_icmp->data[i]);
+                                            }
+                                            puts("\nsent ICMP body:");
+                                            for (i = 0; i < ICMP_DATA_SIZE; i++) {
+                                                printf("%x ",last_icmp->data[i]);
+                                            }
+                                            printf("\n");
+                                        }
+                                    }
+
+                                    puts("FAILED\n" KWHT);
+                                }
+                                else {
+                                    /* This should be impossible to reach, unless something fishy happened at the general memcmp */
+                                    puts(KBLU "PASSED. IP headers match. *Note: this is a fishy way to pass the test, explore this*\n" KWHT);
+                                    return 1;
+                                }
                             }
 
                             /* if ARP headers don't match, print differences */

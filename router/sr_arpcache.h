@@ -78,6 +78,7 @@ struct sr_packet {
     uint8_t *buf;               /* A raw Ethernet frame, presumably with the dest MAC empty */
     unsigned int len;           /* Length of raw Ethernet frame */
     char *iface;                /* The outgoing interface */
+    char *src_iface;            /* The incoming interface */
     struct sr_packet *next;
 };
 
@@ -106,6 +107,11 @@ struct sr_arpcache {
     pthread_mutexattr_t attr;
 };
 
+/* We only list this publicly to facilitate Unit Testing situations where
+ * multiple seconds pass before an event (ARP cache timeout) */
+
+void sr_arpcache_sweepreqs(struct sr_instance *sr);
+
 /* Handles an ARP request, either by sending out an ARP request, or by sending
  * out ICMP host unreachable messages to all concerned.
  */
@@ -126,7 +132,8 @@ struct sr_arpreq *sr_arpcache_queuereq(struct sr_arpcache *cache,
                          uint32_t ip,
                          uint8_t *packet,               /* borrowed */
                          unsigned int packet_len,
-                         char *iface);
+                         char *iface,
+                         char *src_iface);
 
 /* This method performs two functions:
    1) Looks up this IP in the request queue. If it is found, returns a pointer

@@ -11,6 +11,7 @@
 #include "sr_arpcache.h"
 #include "sr_router.h"
 #include "sr_if.h"
+#include "sr_rt.h"
 #include "sr_protocol.h"
 
 /* 
@@ -19,7 +20,14 @@
   See the comments in the header file for an idea of what it should look like.
 */
 void sr_arpcache_sweepreqs(struct sr_instance *sr) { 
-    /* Fill this in */
+
+    struct sr_arpreq *req_walker = sr->cache.requests;
+
+    while (req_walker != NULL) {
+        sr_handle_arpreq(sr, req_walker);
+        req_walker = req_walker->next;
+    }
+
 }
 
 /*
@@ -39,8 +47,54 @@ void sr_handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
         if (req->times_sent >= 5) {
             /*
                send icmp host unreachable to source addr of all pkts waiting
-                 on this request
+               on this request
             */
+
+            struct in_addr temp;
+            temp.s_addr = ntohl(req->ip);
+            printf("ARP to %s expired! Sending expiration ICMPs\n",inet_ntoa(temp));
+
+            /* Walk through the waiting packets */
+
+            struct sr_packet* packet_walker = req->packets;
+            while (packet_walker) {
+
+                /* Copy the newly acquired dest MAC address over */
+
+                sr_ethernet_hdr_t* eth_hdr = (sr_ethernet_hdr_t*)(packet_walker->buf);
+                sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*)(packet_walker->buf + sizeof(sr_ethernet_hdr_t));
+
+                struct sr_if* rebound_if = sr_get_interface(sr, packet_walker->src_iface);
+
+                /* Send out a ICMP port unreachable response */
+
+                sr_constructed_packet_t *outgoing_icmp_packet = sr_build_eth_packet(
+                    rebound_if->addr,
+                    eth_hdr->ether_shost,
+                    ethertype_ip,
+
+                    sr_build_ip_packet(
+                        rebound_if->ip,
+                        ntohl(ip_hdr->ip_src),
+                        ip_protocol_icmp,
+
+                        sr_build_icmp_t3_packet(
+                            ICMP_TYPE_HOST_UNREACHABLE,
+                            ICMP_CODE_HOST_UNREACHABLE,
+                            packet_walker->buf + sizeof(sr_ethernet_hdr_t)
+                        )
+                    )
+                );
+
+                sr_try_send_ip_packet(sr, ntohl(ip_hdr->ip_src), (sr_ethernet_hdr_t*)outgoing_icmp_packet->buf, outgoing_icmp_packet->len, rebound_if->name, 1);
+                
+                /* Continue walking the linked list */
+
+                packet_walker = packet_walker->next;
+            }
+
+            /* Free the memory associated with these requests */
+
             sr_arpreq_destroy(&(sr->cache),req);
         }
         else {
@@ -62,20 +116,24 @@ void sr_handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
             temp.s_addr = ntohl(req->ip);
             printf("Send ARP to %s\n",inet_ntoa(temp));
 
-            unsigned int len;
-            uint8_t *buf = sr_build_arp_packet(
-                ether_broadcast, /* destination ethernet address */
-                sr_get_interface(sr, req->packets->iface)->addr, /* source ethernet address */
-                *((uint32_t*)sr->host), /* src address */
-                ntohl(req->ip), /* dest address, which is converted to network order from host ordering */
-                arp_op_request, /* ARP opcode (command) */
-                &len /* returns the length of the constructed packet */);
+            sr_constructed_packet_t *arp_packet = sr_build_eth_packet(
+                sr_get_interface(sr, req->packets->iface)->addr,
+                ether_broadcast,
+                ethertype_arp,
+
+                sr_build_arp_packet(
+                    sr_get_interface(sr, req->packets->iface)->ip,
+                    ntohl(req->ip),
+                    arp_op_request,
+                    NULL
+                )
+            );
 
             /* All the packets looking for the same IP will be coming from
              * the same interface. Thus we only send one request, on the
              * desired interface. */
 
-            sr_send_packet(sr,buf,len,req->packets->iface);
+            sr_send_packet(sr,arp_packet->buf,arp_packet->len,req->packets->iface);
 
             req->sent = now;
             req->times_sent++;
@@ -121,7 +179,8 @@ struct sr_arpreq *sr_arpcache_queuereq(struct sr_arpcache *cache,
                                        uint32_t ip,
                                        uint8_t *packet,           /* borrowed */
                                        unsigned int packet_len,
-                                       char *iface)
+                                       char *iface,
+                                       char *src_iface)
 {
     pthread_mutex_lock(&(cache->lock));
     
@@ -149,6 +208,8 @@ struct sr_arpreq *sr_arpcache_queuereq(struct sr_arpcache *cache,
         new_pkt->len = packet_len;
 		new_pkt->iface = (char *)malloc(sr_IFACE_NAMELEN);
         strncpy(new_pkt->iface, iface, sr_IFACE_NAMELEN);
+		new_pkt->src_iface = (char *)malloc(sr_IFACE_NAMELEN);
+        strncpy(new_pkt->src_iface, src_iface, sr_IFACE_NAMELEN);
         new_pkt->next = req->packets;
         req->packets = new_pkt;
     }

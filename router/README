@@ -1,0 +1,1 @@
+Run "make test" to build the test version, with all the unit tests ready to run. Then just run ./sr, and the unit tests will execute against a mocked transport layer.

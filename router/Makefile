@@ -33,6 +33,7 @@ SOCK = -lresolv
 endif
 
 CFLAGS = -g -Wall -ansi -D_DEBUG_ -D_GNU_SOURCE $(ARCH)
+test: TEST_FLAG = -D_UNIT_TESTS_
 
 LIBS= $(SOCK) -lm -lpthread
 PFLAGS= -follow-child-processes=yes -cache-dir=/tmp/${USER} 
@@ -58,21 +59,21 @@ sr_MOCK_OBJS = $(patsubst %.c,%.o,$(sr_MOCK_SRCS))
 sr_MOCK_DEPS = $(patsubst %.c,.%.d,$(sr_MOCK_SRCS))
 
 $(sr_OBJS) : %.o : %.c
-	$(CC) -c $(CFLAGS) $< -o $@
+	$(CC) -c $(CFLAGS) $(TEST_FLAG) $< -o $@
 
 $(sr_DEPS) : .%.d : %.c
-	$(CC) -MM $(CFLAGS) $<  > $@
+	$(CC) -MM $(CFLAGS) $(TEST_FLAG) $<  > $@
 
 -include $(sr_DEPS)	
 
 sr : $(sr_OBJS)
-	$(CC) $(CFLAGS) -o sr $(sr_OBJS) $(LIBS) 
+	$(CC) $(CFLAGS) $(TEST_FLAG) -o sr $(sr_OBJS) $(LIBS) 
 
 sr.purify : $(sr_OBJS)
-	$(PURIFY) $(CC) $(CFLAGS) -o sr.purify $(sr_OBJS) $(LIBS)
+	$(PURIFY) $(CC) $(CFLAGS) $(TEST_FLAG) -o sr.purify $(sr_OBJS) $(LIBS)
 
 test : $(sr_MOCK_OBJS)
-	$(CC) $(CFLAGS) -o sr $(sr_MOCK_OBJS) $(LIBS) 
+	$(CC) $(CFLAGS) $(TEST_FLAGS) $(TEST_FLAG) -o sr $(sr_MOCK_OBJS) $(LIBS) 
 
 .PHONY : clean clean-deps dist    
 

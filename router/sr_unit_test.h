@@ -29,7 +29,8 @@ int sr_unit_test_packet(struct sr_instance* sr /* borrowed */,
         const int dst_desired, /* whether or not we should expect a response from the router */
         const uint8_t* dst_buf, /* borrowed */
         const unsigned int dst_len,
-        const char* dst_iface_name /* borrowed */);
+        const char* dst_iface_name, /* borrowed */
+        const int simulate_seconds_before_response);
 
 void sr_clear_last_unit_test();
 

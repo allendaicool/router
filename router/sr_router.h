@@ -56,6 +56,12 @@ struct sr_instance
     FILE* logfile;
 };
 
+typedef struct sr_constructed_packet 
+{
+    unsigned int len;
+    uint8_t* buf;
+} sr_constructed_packet_t;
+
 /* -- sr_main.c -- */
 int sr_verify_routing_table(struct sr_instance* sr);
 
@@ -69,32 +75,16 @@ void sr_init(struct sr_instance* );
 void sr_handlepacket(struct sr_instance* , uint8_t * , unsigned int , char* );
 void sr_handlepacket_arp(struct sr_instance* sr, sr_ethernet_hdr_t* eth_hdr, uint8_t* , unsigned int , char* );
 void sr_handlepacket_ip(struct sr_instance* sr, sr_ethernet_hdr_t* eth_hdr, uint8_t* , unsigned int , char* );
-uint16_t sr_ip_packet_checksum(sr_ip_hdr_t* ip_hdr);
-void sr_handlepacket_icmp(struct sr_instance* sr, uint8_t* , unsigned int , char* );
+void sr_handlepacket_icmp(struct sr_instance* sr, sr_ethernet_hdr_t* eth_hdr, sr_ip_hdr_t* ip_hdr, uint8_t* , unsigned int , char* );
 
-uint8_t *sr_build_icmp_packet(
-    uint8_t  ether_dhost[ETHER_ADDR_LEN], /* destination ethernet address */
-    uint8_t  ether_shost[ETHER_ADDR_LEN], /* source ethernet address */
-    uint32_t ip_src, /* src address */
-    uint32_t ip_dst, /* dest address */
-    uint8_t icmp_type,
-    uint8_t icmp_code,
-    unsigned int* len /* returns the length of the packet */);
+void sr_try_send_ip_packet(struct sr_instance* sr,uint32_t ip_dst,sr_ethernet_hdr_t* eth_hdr,unsigned int len,char* interface, int loop_protect);
 
-uint8_t *sr_build_arp_packet(
-    uint8_t  ether_dhost[ETHER_ADDR_LEN], /* destination ethernet address */
-    uint8_t  ether_shost[ETHER_ADDR_LEN], /* source ethernet address */
-    uint32_t ip_src, /* src address */
-    uint32_t ip_dst, /* dest address */
-    unsigned short ar_op, /* ARP opcode (command) */
-    unsigned int* len /* returns the length of the packet */);
-
-uint8_t *sr_build_dummy_tcp_packet(
-    uint8_t  ether_dhost[ETHER_ADDR_LEN], /* destination ethernet address */
-    uint8_t  ether_shost[ETHER_ADDR_LEN], /* source ethernet address */
-    uint32_t ip_src, /* src address */
-    uint32_t ip_dst, /* dest address */
-    unsigned int* len /* returns the length of the packet */);
+sr_constructed_packet_t *sr_build_eth_packet(uint8_t ether_dhost[ETHER_ADDR_LEN], uint8_t ether_shost[ETHER_ADDR_LEN], uint16_t ether_type, sr_constructed_packet_t* payload);
+sr_constructed_packet_t *sr_build_arp_packet(uint32_t ip_src, uint32_t ip_dst, unsigned short ar_op, sr_constructed_packet_t* payload);
+sr_constructed_packet_t *sr_build_ip_packet(uint32_t ip_src, uint32_t ip_dst, uint8_t ip_p, sr_constructed_packet_t* payload);
+sr_constructed_packet_t *sr_build_icmp_packet(uint8_t icmp_type, uint8_t icmp_code, sr_constructed_packet_t* payload);
+sr_constructed_packet_t *sr_build_icmp_t3_packet(uint8_t icmp_type, uint8_t icmp_code, uint8_t* trigger_packet);
+sr_constructed_packet_t *sr_build_dummy_tcp_packet();
 
 /* -- sr_if.c -- */
 void sr_add_interface(struct sr_instance* , const char* );

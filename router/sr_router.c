@@ -243,14 +243,13 @@ void sr_handlepacket_arp(struct sr_instance* sr,
 
 void sr_handlepacket_ip(struct sr_instance* sr,
         sr_ethernet_hdr_t* eth_hdr,
-        uint8_t* packet/* not even a malloc pointer */,
+        uint8_t* packet/* not even a malloc pointer, don't free this */,
         unsigned int len,
         char* interface/* lent */) 
 {
     puts("handling IP header");
     sr_ip_hdr_t *ip_hdr;
     struct sr_if* if_dst;
-    struct sr_rt* rt_dst;
 
     /* REQUIRES */
     assert(packet);
@@ -266,18 +265,49 @@ void sr_handlepacket_ip(struct sr_instance* sr,
     uint32_t ip_dst = ntohl(ip_hdr->ip_dst);
 
     /* Check for a corrupt packet */
-    if (sr_ip_packet_checksum(ip_hdr) != ntohs(ip_hdr->ip_sum)) {
-        /* TODO: Send an ICMP packet back */
-        /* TODO: return */
+
+    uint16_t cksum_buffer = ip_hdr->ip_sum;
+    ip_hdr->ip_sum = 0;
+
+    if (cksum((const void*)ip_hdr, sizeof(sr_ip_hdr_t)) != cksum_buffer) {
+        puts("Checksum is corrupted. Bailing");
+        return;
     }
 
     /* Decrement time to live */
+
     printf("TTL: %i\n", ip_hdr->ip_ttl);
-    if (ip_hdr->ip_ttl-- <= 0) {
-        /* TODO: Send an ICMP packet back */
+    if (--(ip_hdr->ip_ttl) <= 0) {
         puts("Packet TTL expired");
+
+        /* Send out a ICMP port unreachable response */
+
+        sr_constructed_packet_t *outgoing_icmp_packet = sr_build_eth_packet(
+            sr_get_interface(sr, interface)->addr,
+            eth_hdr->ether_shost,
+            ethertype_ip,
+
+            sr_build_ip_packet(
+                sr_get_interface(sr, interface)->ip,
+                ntohl(ip_hdr->ip_src),
+                ip_protocol_icmp,
+
+                sr_build_icmp_packet(
+                    ICMP_TYPE_TTL_EXCEEDED,
+                    ICMP_CODE_TTL_EXCEEDED,
+                    NULL
+                )
+            )
+        );
+
+        sr_try_send_ip_packet(sr, ntohl(ip_hdr->ip_src), (sr_ethernet_hdr_t*)outgoing_icmp_packet->buf, outgoing_icmp_packet->len, interface, 1);
+
         return;
     }
+
+    /* Recalculate the cksum after changing the TTL */
+
+    ip_hdr->ip_sum = cksum((const void*)ip_hdr, sizeof(sr_ip_hdr_t));
 
     /* Check for any IP packets destined for our interfaces */
 
@@ -295,7 +325,7 @@ void sr_handlepacket_ip(struct sr_instance* sr,
              */
 
             case ip_protocol_icmp:
-                sr_handlepacket_icmp(sr, packet + sizeof(sr_ip_hdr_t), len - sizeof(sr_ip_hdr_t), interface);
+                sr_handlepacket_icmp(sr, eth_hdr, ip_hdr, packet + sizeof(sr_ip_hdr_t), len - sizeof(sr_ip_hdr_t), interface);
                 return;
 
             /*
@@ -305,6 +335,29 @@ void sr_handlepacket_ip(struct sr_instance* sr,
             case ip_protocol_tcp:
             case ip_protocol_udp:
                 puts("Received a TCP/UDP request.");
+    
+                /* Send out a ICMP port unreachable response */
+
+                sr_constructed_packet_t *outgoing_icmp_packet = sr_build_eth_packet(
+                    sr_get_interface(sr, interface)->addr,
+                    eth_hdr->ether_shost,
+                    ethertype_ip,
+
+                    sr_build_ip_packet(
+                        sr_get_interface(sr, interface)->ip,
+                        ntohl(ip_hdr->ip_src),
+                        ip_protocol_icmp,
+
+                        sr_build_icmp_t3_packet(
+                            ICMP_TYPE_PORT_UNREACHABLE,
+                            ICMP_CODE_PORT_UNREACHABLE,
+                            (uint8_t*)ip_hdr
+                        )
+                    )
+                );
+
+                sr_try_send_ip_packet(sr, ntohl(ip_hdr->ip_src), (sr_ethernet_hdr_t*)outgoing_icmp_packet->buf, outgoing_icmp_packet->len, interface, 1);
+
                 return;
         }
 
@@ -312,9 +365,84 @@ void sr_handlepacket_ip(struct sr_instance* sr,
         return;
     }
 
+    /* Handles checking the routing table, and making any ARP requests we need to make */
+
+    sr_try_send_ip_packet(sr, ip_dst, eth_hdr, len + sizeof(sr_ethernet_hdr_t), interface, 1);
+}
+
+
+/*---------------------------------------------------------------------
+ * Method: sr_handlepacket_icmp(sr_icmp_hdr_t *icmp_hdr)
+ * Scope:  Private
+ *
+ * This method processes a ICMP bundle
+ *
+ *---------------------------------------------------------------------*/
+
+void sr_handlepacket_icmp(struct sr_instance* sr,
+        sr_ethernet_hdr_t *eth_hdr,
+        sr_ip_hdr_t *ip_hdr,
+        uint8_t* packet/* not even a malloc pointer */,
+        unsigned int len,
+        char* interface/* lent */) 
+{
+    puts("handling ICMP header");
+    sr_icmp_hdr_t *icmp_hdr;
+
+    /* REQUIRES */
+    assert(packet);
+
+    icmp_hdr = (sr_icmp_hdr_t*)packet;
+
+    if (len < sizeof(sr_icmp_hdr_t)) {
+        puts("IP payload (claiming to contain ICMP) is smaller than ICMP header. Discarding.");
+        return;
+    }
+    else {
+        puts("Got ICMP header");
+
+        if (icmp_hdr->icmp_type == ICMP_TYPE_ECHO_MESSAGE && icmp_hdr->icmp_code == ICMP_CODE_ECHO_MESSAGE) {
+
+            puts("Responding to ECHO request");
+
+            /* Send out a ICMP port unreachable response */
+
+            sr_constructed_packet_t *outgoing_icmp_packet = sr_build_eth_packet(
+                sr_get_interface(sr, interface)->addr,
+                eth_hdr->ether_shost,
+                ethertype_ip,
+
+                sr_build_ip_packet(
+                    sr_get_interface(sr, interface)->ip,
+                    ntohl(ip_hdr->ip_src),
+                    ip_protocol_icmp,
+
+                    sr_build_icmp_packet(
+                        ICMP_TYPE_ECHO_REPLY,
+                        ICMP_CODE_ECHO_REPLY,
+                        NULL
+                    )
+                )
+            );
+
+            sr_try_send_ip_packet(sr, ntohl(ip_hdr->ip_src), (sr_ethernet_hdr_t*)outgoing_icmp_packet->buf, outgoing_icmp_packet->len, interface, 1);
+        }
+    }
+}
+
+/* Handles looking up a MAC address in our ARP cache, and making any ARP requests necessary
+ * to send a packet along IP */
+
+void sr_try_send_ip_packet(struct sr_instance* sr,
+        uint32_t ip_dst,
+        sr_ethernet_hdr_t* eth_hdr,
+        unsigned int len,
+        char* interface,
+        int loop_protect)
+{
     /* Check for longest match in routing table */
 
-    rt_dst = sr_rt_longest_match(sr,ip_dst);
+    struct sr_rt* rt_dst = sr_rt_longest_match(sr,ip_dst);
 
     /* If we found any matches, forward the packet */
 
@@ -336,13 +464,13 @@ void sr_handlepacket_ip(struct sr_instance* sr,
             /* use next_hop_ip->mac mapping in entry to send the packet */
             puts("ARP cache entry exists");
             memcpy(eth_hdr->ether_dhost,entry->mac,ETHER_ADDR_LEN);
-            sr_send_packet(sr, (uint8_t*)eth_hdr, len + sizeof(sr_ethernet_hdr_t), rt_dst->interface);
+            sr_send_packet(sr, (uint8_t*)eth_hdr, len, rt_dst->interface);
 
             free(entry);
         }
         else {
             puts("ARP cache entry doesn't exist. Queuing.");
-            struct sr_arpreq *req = sr_arpcache_queuereq(&sr->cache, htonl(rt_dst->gw.s_addr), (uint8_t*)eth_hdr, len + sizeof(sr_ethernet_hdr_t), rt_dst->interface);
+            struct sr_arpreq *req = sr_arpcache_queuereq(&sr->cache, htonl(rt_dst->gw.s_addr), (uint8_t*)eth_hdr, len, rt_dst->interface, interface);
             sr_handle_arpreq(sr,req);
         }
 
@@ -355,188 +483,146 @@ void sr_handlepacket_ip(struct sr_instance* sr,
 
     puts("Nothing in the forwarding table.");
 
-    /* TODO: Send an ICMP host unreachable error back */
+    /* Send an ICMP host unreachable error back */
+
+    sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*)(((uint8_t*)eth_hdr)+sizeof(sr_ethernet_hdr_t));
+
+    sr_constructed_packet_t *outgoing_icmp_packet = sr_build_eth_packet(
+        sr_get_interface(sr, interface)->addr,
+        eth_hdr->ether_shost,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            sr_get_interface(sr, interface)->ip,
+            ntohl(ip_hdr->ip_src),
+            ip_protocol_icmp,
+
+            sr_build_icmp_t3_packet(
+                ICMP_TYPE_HOST_UNREACHABLE,
+                ICMP_CODE_HOST_UNREACHABLE,
+                (uint8_t*)ip_hdr
+            )
+        )
+    );
+
+    /* Very slight risk of infinite loop here if we don't have records for the sending address either. Use loop_protect to fix that. */
+
+    if (loop_protect == 1) {
+        sr_try_send_ip_packet(sr, ntohl(ip_hdr->ip_src), (sr_ethernet_hdr_t*)outgoing_icmp_packet->buf, outgoing_icmp_packet->len, interface, 0);
+    }
 }
 
+/* Conditionally grows a payload, leaving size free space at the *FRONT* of the packet, or
+ * creates a new packet, if NULL is passed in. Either way, there is size free space at the
+ * buf pointer, on the heap. Sets all new memory to 0. */
 
-/*---------------------------------------------------------------------
- * Method: sr_ip_packet_checksum(sr_ip_hdr_t* ip_hdr)
- * Scope:  Private
- *
- * This method calculates and returns the checksum for an IP header.
- *
- *---------------------------------------------------------------------*/
-
-uint16_t sr_ip_packet_checksum(sr_ip_hdr_t* ip_hdr) {
-    return 0;
-}
-
-
-/*---------------------------------------------------------------------
- * Method: sr_handlepacket_icmp(sr_icmp_hdr_t *icmp_hdr)
- * Scope:  Private
- *
- * This method processes a ICMP bundle
- *
- *---------------------------------------------------------------------*/
-
-void sr_handlepacket_icmp(struct sr_instance* sr,
-        uint8_t* packet/* not even a malloc pointer */,
-        unsigned int len,
-        char* interface/* lent */) 
-{
-    puts("handling ICMP header");
-    sr_icmp_hdr_t *icmp_hdr;
-
-    /* REQUIRES */
-    assert(packet);
-
-    icmp_hdr = (sr_icmp_hdr_t*)packet;
-
-    if (len < sizeof(sr_icmp_hdr_t)) {
-        puts("IP payload (claiming to contain ICMP) is smaller than ICMP header. Discarding.");
-        return;
+sr_constructed_packet_t *sr_grow_or_create_payload(sr_constructed_packet_t* payload, unsigned long size) {
+    if (payload != NULL) {
+        uint8_t *new_buf = malloc(size + payload->len);
+        memcpy(new_buf + size, payload->buf, payload->len);
+        free(payload->buf);
+        payload->len = payload->len + size;
+        payload->buf = new_buf;
+        memset(payload->buf,0,size);
+        return payload;
     }
     else {
-        puts("Got IP payload");
+        sr_constructed_packet_t* new_packet = malloc(sizeof(sr_constructed_packet_t));
+        new_packet->len = size;
+        new_packet->buf = malloc(size);
+        memset(new_packet->buf,0,size);
+        return new_packet;
     }
 }
 
+/* Creates an ethernet header on a payload, returning the newly enlarged packet */
 
-/*---------------------------------------------------------------------
- * Method: sr_build_icmp_packet(..)
- * Scope:  global
- *
- * This method builds an ICMP packet complete with IP and ETH headers,
- * ready for transport.
- *
- *---------------------------------------------------------------------*/
+sr_constructed_packet_t *sr_build_eth_packet(uint8_t ether_shost[ETHER_ADDR_LEN], uint8_t ether_dhost[ETHER_ADDR_LEN], uint16_t ether_type, sr_constructed_packet_t* payload) {
+    sr_constructed_packet_t* eth_packet = sr_grow_or_create_payload(payload, sizeof(sr_ethernet_hdr_t));
 
-uint8_t *sr_build_icmp_packet(
-    uint8_t  ether_dhost[ETHER_ADDR_LEN], /* destination ethernet address */
-    uint8_t  ether_shost[ETHER_ADDR_LEN], /* source ethernet address */
-    uint32_t ip_src, /* src address */
-    uint32_t ip_dst, /* dest address */
-    uint8_t icmp_type,
-    uint8_t icmp_code,
-    unsigned int* len /* returns the length of the packet */)
-{
-    *len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t);
-    uint8_t *buf = malloc(*len);
-
-    /* Clear the buf just in case */
-
-    memset(buf,0,*len);
-
-    /* Get the headers in this packet */
-
-    sr_ethernet_hdr_t *eth_hdr = (sr_ethernet_hdr_t*)buf;
-    sr_ip_hdr_t *ip_hdr = (sr_ip_hdr_t*)(buf + sizeof(sr_ethernet_hdr_t));
-    sr_icmp_hdr_t *icmp_hdr = (sr_icmp_hdr_t*)(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-
-    /* Fill in values we care about */
+    sr_ethernet_hdr_t* eth_hdr = (sr_ethernet_hdr_t*)(eth_packet->buf);
 
     memcpy(eth_hdr->ether_dhost,ether_dhost,ETHER_ADDR_LEN);
     memcpy(eth_hdr->ether_shost,ether_shost,ETHER_ADDR_LEN);
-    eth_hdr->ether_type = htons(ethertype_ip);
+    eth_hdr->ether_type = htons(ether_type);
+
+    return eth_packet;
+}
+
+/* Creates an ARP header, potentially containing a payload, and returns the packet */
+
+sr_constructed_packet_t *sr_build_arp_packet(uint32_t ip_src, uint32_t ip_dst, unsigned short ar_op, sr_constructed_packet_t* payload) {
+    sr_constructed_packet_t* arp_packet = sr_grow_or_create_payload(payload, sizeof(sr_arp_hdr_t));
+
+    sr_arp_hdr_t* arp_hdr = (sr_arp_hdr_t*)(arp_packet->buf);
+
+    arp_hdr->ar_sip = htonl(ip_src);
+    arp_hdr->ar_tip = htonl(ip_dst);
+    arp_hdr->ar_op = htons(ar_op);
+
+    return arp_packet;
+}
+
+/* Creates an IP header, returning the packet */
+
+sr_constructed_packet_t *sr_build_ip_packet(uint32_t ip_src, uint32_t ip_dst, uint8_t ip_p, sr_constructed_packet_t* payload) {
+    sr_constructed_packet_t* ip_packet = sr_grow_or_create_payload(payload, sizeof(sr_ip_hdr_t));
+
+    sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*)(ip_packet->buf);
+
+    /* Fill in values, with due respect for byte order */
 
     ip_hdr->ip_src = htonl(ip_src);
     ip_hdr->ip_dst = htonl(ip_dst);
-    ip_hdr->ip_p = ip_protocol_icmp;
+    ip_hdr->ip_p = ip_p; /* one byte, no need for htons */
     ip_hdr->ip_ttl = (uint8_t)64; /* one byte, no need for htons */
+
+    ip_hdr->ip_sum = cksum((const void*)ip_hdr,sizeof(sr_ip_hdr_t));
+
+    return ip_packet;
+}
+
+/* Creates an ICMP header, returning the packet to this point */
+
+sr_constructed_packet_t *sr_build_icmp_packet(uint8_t icmp_type, uint8_t icmp_code, sr_constructed_packet_t* payload) {
+    sr_constructed_packet_t* icmp_packet = sr_grow_or_create_payload(payload, sizeof(sr_icmp_hdr_t));
+
+    sr_icmp_hdr_t* icmp_hdr = (sr_icmp_hdr_t*)(icmp_packet->buf);
 
     icmp_hdr->icmp_type = icmp_type;
     icmp_hdr->icmp_code = icmp_code;
 
-    return buf;
+    icmp_hdr->icmp_sum = cksum((const void*)icmp_hdr,sizeof(sr_icmp_hdr_t));
+
+    return icmp_packet;
 }
 
 
-/*---------------------------------------------------------------------
- * Method: sr_build_arp_packet(..)
- * Scope:  global
- *
- * This method builds an ARP packet complete with IP and ETH headers,
- * ready for transport.
- *
- *---------------------------------------------------------------------*/
+/* Creates an ICMP type 3 header, returning the packet to this point */
 
-uint8_t *sr_build_arp_packet(
-    uint8_t  ether_dhost[ETHER_ADDR_LEN], /* destination ethernet address */
-    uint8_t  ether_shost[ETHER_ADDR_LEN], /* source ethernet address */
-    uint32_t ip_src, /* src address */
-    uint32_t ip_dst, /* dest address */
-    unsigned short ar_op, /* ARP opcode (command) */
-    unsigned int* len /* returns the length of the packet */)
-{
-    *len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
-    uint8_t *buf = malloc(*len);
+sr_constructed_packet_t *sr_build_icmp_t3_packet(uint8_t icmp_type, uint8_t icmp_code, uint8_t* trigger_packet) {
 
-    /* Clear the buf just in case */
+    /* REQUIRES */
 
-    memset(buf,0,*len);
+    assert(trigger_packet);
 
-    /* Get the headers in this packet */
+    sr_constructed_packet_t* icmp_packet = sr_grow_or_create_payload(NULL, sizeof(sr_icmp_t3_hdr_t));
 
-    sr_ethernet_hdr_t *eth_hdr = (sr_ethernet_hdr_t*)buf;
-    sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t*)(buf + sizeof(sr_ethernet_hdr_t));
+    sr_icmp_t3_hdr_t* icmp_hdr = (sr_icmp_t3_hdr_t*)(icmp_packet->buf);
 
-    /* Fill in values we care about */
+    icmp_hdr->icmp_type = icmp_type;
+    icmp_hdr->icmp_code = icmp_code;
 
-    memcpy(eth_hdr->ether_dhost,ether_dhost,ETHER_ADDR_LEN);
-    memcpy(eth_hdr->ether_shost,ether_shost,ETHER_ADDR_LEN);
-    eth_hdr->ether_type = htons(ethertype_arp);
+    memcpy(icmp_hdr->data, trigger_packet, ICMP_DATA_SIZE);
 
-    arp_hdr->ar_sip = htonl(ip_src);
-    arp_hdr->ar_tip = htonl(ip_dst);
+    icmp_hdr->icmp_sum = cksum((const void*)icmp_hdr,sizeof(sr_icmp_t3_hdr_t));
 
-    arp_hdr->ar_op = htons(ar_op);
-
-    return buf;
+    return icmp_packet;
 }
 
+/* Creates a dummy packet, purely for testing purposes */
 
-
-/*---------------------------------------------------------------------
- * Method: sr_build_dummy_tcp_packer(..)
- * Scope:  global
- *
- * This method builds a TCP packet complete with IP and ETH headers,
- * ready for transport. It only exists for making TCP packets for the
- * Unit Tests, but it makes the most sense for it to live here with the
- * other packets.
- *
- *---------------------------------------------------------------------*/
-
-uint8_t *sr_build_dummy_tcp_packet(
-    uint8_t  ether_dhost[ETHER_ADDR_LEN], /* destination ethernet address */
-    uint8_t  ether_shost[ETHER_ADDR_LEN], /* source ethernet address */
-    uint32_t ip_src, /* src address */
-    uint32_t ip_dst, /* dest address */
-    unsigned int* len /* returns the length of the packet */)
-{
-    *len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + 40; /* we don't actually fill in tcp, we just claim to be tcp */
-    uint8_t *buf = malloc(*len);
-
-    /* Clear the buf just in case */
-
-    memset(buf,0,*len);
-
-    /* Get the headers in this packet */
-
-    sr_ethernet_hdr_t *eth_hdr = (sr_ethernet_hdr_t*)buf;
-    sr_ip_hdr_t *ip_hdr = (sr_ip_hdr_t*)(buf + sizeof(sr_ethernet_hdr_t));
-
-    /* Fill in values we care about */
-
-    memcpy(eth_hdr->ether_dhost,ether_dhost,ETHER_ADDR_LEN);
-    memcpy(eth_hdr->ether_shost,ether_shost,ETHER_ADDR_LEN);
-    eth_hdr->ether_type = htons(ethertype_ip);
-
-    ip_hdr->ip_src = htonl(ip_src);
-    ip_hdr->ip_dst = htonl(ip_dst);
-    ip_hdr->ip_p = ip_protocol_tcp;
-    ip_hdr->ip_ttl = (uint8_t)64;
-
-    return buf;
+sr_constructed_packet_t *sr_build_dummy_tcp_packet() {
+    return sr_grow_or_create_payload(NULL, 64);
 }
+

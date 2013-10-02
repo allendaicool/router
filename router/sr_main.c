@@ -38,11 +38,17 @@ extern char* optarg;
 /*-----------------------------------------------------------------------------
  *---------------------------------------------------------------------------*/
 
+#ifdef _UNIT_TESTS_
+#define VERSION_INFO "VNS sr stub code revised 2009-10-14 (rev 0.20) - Unit Testing Mode"
+#define DEFAULT_RTABLE "rtable-test"
+#else
 #define VERSION_INFO "VNS sr stub code revised 2009-10-14 (rev 0.20)"
+#define DEFAULT_RTABLE "rtable"
+#endif
+
 #define DEFAULT_PORT 8888
 #define DEFAULT_HOST "vrhost"
 #define DEFAULT_SERVER "localhost"
-#define DEFAULT_RTABLE "rtable"
 #define DEFAULT_TOPO 0
 
 static void usage(char* );
@@ -303,6 +309,7 @@ int sr_verify_routing_table(struct sr_instance* sr)
 } /* -- sr_verify_routing_table -- */
 
 static void sr_load_rt_wrap(struct sr_instance* sr, char* rtable) {
+    printf("Trying to load %s", rtable);
     if(sr_load_rt(sr, rtable) != 0) {
         fprintf(stderr,"Error setting up routing table from file %s\n",
                 rtable);
