@@ -22,6 +22,7 @@
 
 #include "sr_rt.h"
 #include "sr_router.h"
+#include "sr_utils.h"
 
 /*---------------------------------------------------------------------
  * Method:
@@ -177,9 +178,9 @@ struct sr_rt *sr_rt_longest_match(struct sr_instance* sr, uint32_t ip) {
 
     /* Setup to find the longest match */
 
-    struct in_addr test_addr;
-    test_addr.s_addr = ip;
-    printf("Looking up longest match for %s\n",inet_ntoa(test_addr));
+    char* temp_ip = ip_to_str(ip);
+    printf("Looking up longest match for %s\n",temp_ip);
+    free(temp_ip);
 
     rt_walker = sr->routing_table;
     while (rt_walker)
@@ -187,8 +188,12 @@ struct sr_rt *sr_rt_longest_match(struct sr_instance* sr, uint32_t ip) {
         uint32_t rt_walker_ip = (uint32_t)rt_walker->dest.s_addr;
         uint32_t rt_walker_mask = (uint32_t)rt_walker->mask.s_addr;
 
-        printf("Checking %s",inet_ntoa(rt_walker->dest));
-        printf(" mask %s\n",inet_ntoa(rt_walker->mask));
+        temp_ip = ip_to_str(rt_walker->dest.s_addr);
+        printf("Checking %s",temp_ip);
+        free(temp_ip);
+        temp_ip = ip_to_str(rt_walker->mask.s_addr);
+        printf(" mask %s\n",temp_ip);
+        free(temp_ip);
 
         /* First check for matches with some bit-twiddling, then test how 
          * long the match is.

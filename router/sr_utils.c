@@ -44,6 +44,19 @@ void print_addr_eth(uint8_t *addr) {
   fprintf(stderr, "\n");
 }
 
+char* ip_to_str(int32_t ip) {
+    char buf[17];
+    memset(buf,0,17);
+    int pointer = 0;
+    int i;
+    for (i = 0; i < 4; i++) {
+        unsigned char *cur_octet = ((char*)(&ip));
+        pointer += sprintf(buf+pointer,"%i",*(cur_octet+i));
+        if (i != 3) buf[pointer++] = '.';
+    }
+    return strdup(buf);
+}
+
 /* Prints out IP address as a string from in_addr */
 void print_addr_ip(struct in_addr address) {
   char buf[INET_ADDRSTRLEN];

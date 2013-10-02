@@ -139,9 +139,7 @@ void sr_handlepacket_arp(struct sr_instance* sr,
 
     arp_hdr = (sr_arp_hdr_t*)packet;
 
-    struct in_addr ar_from;
-    ar_from.s_addr = arp_hdr->ar_sip;
-    printf("from (network order) %s\n",inet_ntoa(ar_from));
+    printf("from (network order) %s\n",ip_to_str(arp_hdr->ar_sip));
 
     /* Endianness */
     unsigned short ar_op = ntohs(arp_hdr->ar_op);
@@ -367,7 +365,7 @@ void sr_handlepacket_ip(struct sr_instance* sr,
 
     /* Handles checking the routing table, and making any ARP requests we need to make */
 
-    sr_try_send_ip_packet(sr, ip_dst, eth_hdr, len + sizeof(sr_ethernet_hdr_t), interface, 1);
+    sr_try_send_ip_packet(sr, ntohl(ip_hdr->ip_dst), eth_hdr, len + sizeof(sr_ethernet_hdr_t), interface, 1);
 }
 
 
@@ -442,13 +440,15 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
 {
     /* Check for longest match in routing table */
 
-    struct sr_rt* rt_dst = sr_rt_longest_match(sr,ip_dst);
+    struct sr_rt* rt_dst = sr_rt_longest_match(sr,htonl(ip_dst));
 
     /* If we found any matches, forward the packet */
 
     if (rt_dst != 0) {
 
-        printf("Forwarding IP packet to %s\n",inet_ntoa(rt_dst->gw));
+        char* temp_ip = ip_to_str(rt_dst->gw.s_addr);
+        printf("Forwarding IP packet to %s\n",temp_ip);
+        free(temp_ip);
 
         /* Change the source MAC address of the packet to reflect the interface we're sending out through.
          * Otherwise, though, the packet (including ethernet header) is forwarded unchanged. */
@@ -470,7 +470,7 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
         }
         else {
             puts("ARP cache entry doesn't exist. Queuing.");
-            struct sr_arpreq *req = sr_arpcache_queuereq(&sr->cache, htonl(rt_dst->gw.s_addr), (uint8_t*)eth_hdr, len, rt_dst->interface, interface);
+            struct sr_arpreq *req = sr_arpcache_queuereq(&sr->cache, rt_dst->gw.s_addr, (uint8_t*)eth_hdr, len, rt_dst->interface, interface);
             sr_handle_arpreq(sr,req);
         }
 
@@ -551,14 +551,22 @@ sr_constructed_packet_t *sr_build_eth_packet(uint8_t ether_shost[ETHER_ADDR_LEN]
 
 /* Creates an ARP header, potentially containing a payload, and returns the packet */
 
-sr_constructed_packet_t *sr_build_arp_packet(uint32_t ip_src, uint32_t ip_dst, unsigned short ar_op, sr_constructed_packet_t* payload) {
+sr_constructed_packet_t *sr_build_arp_packet(uint32_t ip_src, uint32_t ip_dst, uint8_t ether_shost[ETHER_ADDR_LEN], uint8_t ether_dhost[ETHER_ADDR_LEN], unsigned short ar_op, sr_constructed_packet_t* payload) {
     sr_constructed_packet_t* arp_packet = sr_grow_or_create_payload(payload, sizeof(sr_arp_hdr_t));
 
     sr_arp_hdr_t* arp_hdr = (sr_arp_hdr_t*)(arp_packet->buf);
 
+    arp_hdr->ar_hrd = htons(1); /* Ethernet hardware */
+    arp_hdr->ar_pro = htons(0x0800); /* IPv4 */
+    arp_hdr->ar_hln = 6; /* 6 byte ethernet addrs */
+    arp_hdr->ar_pln = 4; /* 4 byte IP addrs */
+
     arp_hdr->ar_sip = htonl(ip_src);
     arp_hdr->ar_tip = htonl(ip_dst);
     arp_hdr->ar_op = htons(ar_op);
+
+    memcpy(arp_hdr->ar_sha,ether_shost,ETHER_ADDR_LEN);
+    memcpy(arp_hdr->ar_tha,ether_dhost,ETHER_ADDR_LEN);
 
     return arp_packet;
 }

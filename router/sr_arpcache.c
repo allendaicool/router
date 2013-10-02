@@ -13,6 +13,7 @@
 #include "sr_if.h"
 #include "sr_rt.h"
 #include "sr_protocol.h"
+#include "sr_utils.h"
 
 /* 
   This function gets called every second. For each request sent out, we keep
@@ -50,9 +51,9 @@ void sr_handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
                on this request
             */
 
-            struct in_addr temp;
-            temp.s_addr = ntohl(req->ip);
-            printf("ARP to %s expired! Sending expiration ICMPs\n",inet_ntoa(temp));
+            char* temp_ip = ip_to_str(ntohl(req->ip));
+            printf("ARP to %s expired! Sending expiration ICMPs\n",temp_ip);
+            free(temp_ip);
 
             /* Walk through the waiting packets */
 
@@ -64,13 +65,13 @@ void sr_handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
                 sr_ethernet_hdr_t* eth_hdr = (sr_ethernet_hdr_t*)(packet_walker->buf);
                 sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*)(packet_walker->buf + sizeof(sr_ethernet_hdr_t));
 
-                struct sr_if* rebound_if = sr_get_interface(sr, packet_walker->src_iface);
+                struct sr_if* rebound_if = sr_get_interface(sr, packet_walker->src_iface); /* just to put in some temp values for the packet */
 
                 /* Send out a ICMP port unreachable response */
 
                 sr_constructed_packet_t *outgoing_icmp_packet = sr_build_eth_packet(
                     rebound_if->addr,
-                    eth_hdr->ether_shost,
+                    eth_hdr->ether_shost, /* This gets overwritten in send_ip_packet */
                     ethertype_ip,
 
                     sr_build_ip_packet(
@@ -112,9 +113,10 @@ void sr_handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
 
             /* Broadcast our ARP request on our interface */
 
-            struct in_addr temp;
-            temp.s_addr = ntohl(req->ip);
-            printf("Send ARP to %s\n",inet_ntoa(temp));
+            char* temp_ip = ip_to_str(sr_get_interface(sr, req->packets->iface)->ip);
+            printf("Send ARP on interface %s, with IP %s\n",req->packets->iface, temp_ip);
+
+            free(temp_ip);
 
             sr_constructed_packet_t *arp_packet = sr_build_eth_packet(
                 sr_get_interface(sr, req->packets->iface)->addr,
@@ -122,8 +124,10 @@ void sr_handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
                 ethertype_arp,
 
                 sr_build_arp_packet(
-                    sr_get_interface(sr, req->packets->iface)->ip,
+                    ntohl(sr_get_interface(sr, req->packets->iface)->ip),
                     ntohl(req->ip),
+                    sr_get_interface(sr, req->packets->iface)->addr,
+                    ether_broadcast,
                     arp_op_request,
                     NULL
                 )
@@ -228,6 +232,10 @@ struct sr_arpreq *sr_arpcache_insert(struct sr_arpcache *cache,
                                      uint32_t ip)
 {
     pthread_mutex_lock(&(cache->lock));
+
+    char* temp_ip = ip_to_str(ip);
+    printf("Inserting mapping %s -> %s into ARP table\n",temp_ip,mac);
+    free(temp_ip);
     
     struct sr_arpreq *req, *prev = NULL, *next = NULL; 
     for (req = cache->requests; req != NULL; req = req->next) {

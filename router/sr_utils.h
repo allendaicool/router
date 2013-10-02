@@ -33,6 +33,8 @@ uint16_t cksum(const void *_data, int len);
 uint16_t ethertype(uint8_t *buf);
 uint8_t ip_protocol(uint8_t *buf);
 
+char* ip_to_str(int32_t ip);
+
 void print_addr_eth(uint8_t *addr);
 void print_addr_ip(struct in_addr address);
 void print_addr_ip_int(uint32_t ip);

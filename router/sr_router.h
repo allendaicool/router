@@ -79,8 +79,8 @@ void sr_handlepacket_icmp(struct sr_instance* sr, sr_ethernet_hdr_t* eth_hdr, sr
 
 void sr_try_send_ip_packet(struct sr_instance* sr,uint32_t ip_dst,sr_ethernet_hdr_t* eth_hdr,unsigned int len,char* interface, int loop_protect);
 
-sr_constructed_packet_t *sr_build_eth_packet(uint8_t ether_dhost[ETHER_ADDR_LEN], uint8_t ether_shost[ETHER_ADDR_LEN], uint16_t ether_type, sr_constructed_packet_t* payload);
-sr_constructed_packet_t *sr_build_arp_packet(uint32_t ip_src, uint32_t ip_dst, unsigned short ar_op, sr_constructed_packet_t* payload);
+sr_constructed_packet_t *sr_build_eth_packet(uint8_t ether_shost[ETHER_ADDR_LEN], uint8_t ether_dhost[ETHER_ADDR_LEN], uint16_t ether_type, sr_constructed_packet_t* payload);
+sr_constructed_packet_t *sr_build_arp_packet(uint32_t ip_src, uint32_t ip_dst, uint8_t ether_shost[ETHER_ADDR_LEN], uint8_t ether_dhost[ETHER_ADDR_LEN], unsigned short ar_op, sr_constructed_packet_t* payload);
 sr_constructed_packet_t *sr_build_ip_packet(uint32_t ip_src, uint32_t ip_dst, uint8_t ip_p, sr_constructed_packet_t* payload);
 sr_constructed_packet_t *sr_build_icmp_packet(uint8_t icmp_type, uint8_t icmp_code, sr_constructed_packet_t* payload);
 sr_constructed_packet_t *sr_build_icmp_t3_packet(uint8_t icmp_type, uint8_t icmp_code, uint8_t* trigger_packet);
