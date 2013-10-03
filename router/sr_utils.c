@@ -50,7 +50,7 @@ char* ip_to_str(int32_t ip) {
     int pointer = 0;
     int i;
     for (i = 0; i < 4; i++) {
-        unsigned char *cur_octet = ((char*)(&ip));
+        unsigned char *cur_octet = ((unsigned char*)(&ip));
         pointer += sprintf(buf+pointer,"%i",*(cur_octet+i));
         if (i != 3) buf[pointer++] = '.';
     }

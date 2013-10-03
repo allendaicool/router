@@ -183,6 +183,27 @@ sr_ether_addrs_match_interface( struct sr_instance* sr, /* borrowed */
 
 } /* -- sr_ether_addrs_match_interface -- */
 
+
+int sr_mock_receive_packet(struct sr_instance* sr /* borrowed */,
+                         uint8_t* buf /* borrowed */ ,
+                         unsigned int len,
+                         const char* iface /* borrowed */)
+{
+    /* REQUIRES */
+    assert(sr);
+    assert(buf);
+    assert(iface);
+
+    /* Log it */
+    sr_log_packet(sr, buf, len);
+
+    /* Handle */
+    sr_handlepacket(sr,
+            buf,
+            len,
+            iface);
+}
+
 /*-----------------------------------------------------------------------------
  * Method: sr_send_packet(..)
  * Scope: Global

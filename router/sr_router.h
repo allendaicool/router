@@ -58,7 +58,7 @@ struct sr_instance
 
 typedef struct sr_constructed_packet 
 {
-    unsigned int len;
+    uint16_t len;
     uint8_t* buf;
 } sr_constructed_packet_t;
 
@@ -82,7 +82,7 @@ void sr_try_send_ip_packet(struct sr_instance* sr,uint32_t ip_dst,sr_ethernet_hd
 sr_constructed_packet_t *sr_build_eth_packet(uint8_t ether_shost[ETHER_ADDR_LEN], uint8_t ether_dhost[ETHER_ADDR_LEN], uint16_t ether_type, sr_constructed_packet_t* payload);
 sr_constructed_packet_t *sr_build_arp_packet(uint32_t ip_src, uint32_t ip_dst, uint8_t ether_shost[ETHER_ADDR_LEN], uint8_t ether_dhost[ETHER_ADDR_LEN], unsigned short ar_op, sr_constructed_packet_t* payload);
 sr_constructed_packet_t *sr_build_ip_packet(uint32_t ip_src, uint32_t ip_dst, uint8_t ip_p, sr_constructed_packet_t* payload);
-sr_constructed_packet_t *sr_build_icmp_packet(uint8_t icmp_type, uint8_t icmp_code, sr_constructed_packet_t* payload);
+sr_constructed_packet_t *sr_build_icmp_packet(uint8_t icmp_type, uint8_t icmp_code, uint8_t* trigger_packet);
 sr_constructed_packet_t *sr_build_icmp_t3_packet(uint8_t icmp_type, uint8_t icmp_code, uint8_t* trigger_packet);
 sr_constructed_packet_t *sr_build_dummy_tcp_packet();
 

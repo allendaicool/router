@@ -41,6 +41,13 @@ uint8_t* last_msg_buf = NULL;
 unsigned int last_msg_len = 0;
 char* last_msg_iface = NULL;
 
+/* Not worth making a header file for this */
+
+int sr_mock_receive_packet(struct sr_instance* sr /* borrowed */,
+                         uint8_t* buf /* borrowed */ ,
+                         unsigned int len,
+                         const char* iface /* borrowed */);
+
 /*-----------------------------------------------------------------------------
  * Method: sr_run_unit_tests(..)
  * Scope: global
@@ -152,10 +159,10 @@ sr_unit_test_shared_state_t *sr_setup_unit_test_shared_state(struct sr_instance 
     inet_aton("4.3.2.0",&host_b_gw_addr);
     inet_aton("4.3.0.0",&host_c_addr);
 
-    shared_state->host_a_ip = (uint32_t)host_a_addr.s_addr;
+    shared_state->host_a_ip = ((uint32_t)host_a_addr.s_addr);
     shared_state->me_a_ip = sr_get_interface(sr, "eth0")->ip;
 
-    shared_state->host_b_ip = (uint32_t)host_b_addr.s_addr;
+    shared_state->host_b_ip = ((uint32_t)host_b_addr.s_addr);
     shared_state->host_b_gw_ip = (uint32_t)host_b_gw_addr.s_addr;
     shared_state->me_b_ip = sr_get_interface(sr, "eth3")->ip;
 
@@ -242,6 +249,8 @@ int sr_unit_test_2(sr_unit_test_shared_state_t *shared_state) {
         sr_build_arp_packet(
             shared_state->me_b_ip,
             shared_state->host_b_gw_ip,
+            shared_state->me_b_eth,
+            shared_state->broadcast_eth,
             arp_op_request,
             NULL
         )
@@ -283,6 +292,8 @@ int sr_unit_test_3(sr_unit_test_shared_state_t *shared_state) {
         sr_build_arp_packet(
             shared_state->host_b_gw_ip,
             shared_state->me_b_ip,
+            shared_state->host_b_gw_eth,
+            shared_state->me_b_eth,
             arp_op_reply,
             NULL
         )
@@ -417,6 +428,8 @@ int sr_unit_test_5(sr_unit_test_shared_state_t *shared_state) {
         sr_build_arp_packet(
             shared_state->host_b_gw_ip,
             shared_state->me_b_ip,
+            shared_state->host_b_gw_eth,
+            shared_state->broadcast_eth,
             arp_op_request,
             NULL
         )
@@ -432,6 +445,8 @@ int sr_unit_test_5(sr_unit_test_shared_state_t *shared_state) {
         sr_build_arp_packet(
             shared_state->me_b_ip,
             shared_state->host_b_gw_ip,
+            shared_state->me_b_eth,
+            shared_state->host_b_gw_eth,
             arp_op_reply,
             NULL
         )
@@ -921,10 +936,12 @@ int sr_unit_test_packet(struct sr_instance* sr /* borrowed */,
     puts("Clearing sent msg buffer.");
     sr_clear_last_unit_test();
     puts("Sending unit test to sr_handlepacket(..)\nThe following is output of the router:\n----");
-    sr_handlepacket(sr,
-            src_buf,
-            src_len,
-            src_iface_name);
+
+    sr_mock_receive_packet(sr,
+                            src_buf,
+                            src_len,
+                            src_iface_name);
+
     if (simulate_seconds_before_response) {
         printf("----");
     }

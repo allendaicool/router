@@ -158,7 +158,7 @@ void sr_handlepacket_arp(struct sr_instance* sr,
              * of *gasp* we write a unit test about it */
 
             struct sr_if* iface = sr_get_interface(sr, interface);
-            if (iface->ip == ntohl(arp_hdr->ar_tip)) {
+            if (iface->ip == arp_hdr->ar_tip) {
 
                 /* Flip around the source and destination IP, keeping both in network order */
 
@@ -172,6 +172,12 @@ void sr_handlepacket_arp(struct sr_instance* sr,
                 memcpy(ether_buf,eth_hdr->ether_shost,ETHER_ADDR_LEN);
                 memcpy(eth_hdr->ether_shost,iface->addr,ETHER_ADDR_LEN);
                 memcpy(eth_hdr->ether_dhost,ether_buf,ETHER_ADDR_LEN);
+
+                /* Flip around eth on ARP header */
+
+                memcpy(ether_buf,arp_hdr->ar_sha,ETHER_ADDR_LEN);
+                memcpy(arp_hdr->ar_sha,iface->addr,ETHER_ADDR_LEN);
+                memcpy(arp_hdr->ar_tha,ether_buf,ETHER_ADDR_LEN);
 
                 /* Change ARP operation to a reply */
 
@@ -287,16 +293,18 @@ void sr_handlepacket_ip(struct sr_instance* sr,
 
             sr_build_ip_packet(
                 sr_get_interface(sr, interface)->ip,
-                ntohl(ip_hdr->ip_src),
+                ip_hdr->ip_src,
                 ip_protocol_icmp,
 
                 sr_build_icmp_packet(
                     ICMP_TYPE_TTL_EXCEEDED,
                     ICMP_CODE_TTL_EXCEEDED,
-                    NULL
+                    packet
                 )
             )
         );
+
+        sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*)(outgoing_icmp_packet->buf+sizeof(sr_ethernet_hdr_t));
 
         sr_try_send_ip_packet(sr, ntohl(ip_hdr->ip_src), (sr_ethernet_hdr_t*)outgoing_icmp_packet->buf, outgoing_icmp_packet->len, interface, 1);
 
@@ -309,7 +317,7 @@ void sr_handlepacket_ip(struct sr_instance* sr,
 
     /* Check for any IP packets destined for our interfaces */
 
-    if_dst = sr_get_interface_ip (sr, ip_dst);
+    if_dst = sr_get_interface_ip (sr, ntohl(ip_dst));
     if (if_dst != 0) {
 
         puts("IP packet is destined for our interfaces.");
@@ -343,7 +351,7 @@ void sr_handlepacket_ip(struct sr_instance* sr,
 
                     sr_build_ip_packet(
                         sr_get_interface(sr, interface)->ip,
-                        ntohl(ip_hdr->ip_src),
+                        ip_hdr->ip_src,
                         ip_protocol_icmp,
 
                         sr_build_icmp_t3_packet(
@@ -412,7 +420,7 @@ void sr_handlepacket_icmp(struct sr_instance* sr,
 
                 sr_build_ip_packet(
                     sr_get_interface(sr, interface)->ip,
-                    ntohl(ip_hdr->ip_src),
+                    ip_hdr->ip_src,
                     ip_protocol_icmp,
 
                     sr_build_icmp_packet(
@@ -458,7 +466,7 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
 
         /* Lookups in the ARP cache keep IP addresses in network byte order, so we need to convert. */
 
-        struct sr_arpentry *entry = sr_arpcache_lookup(&(sr->cache), htonl(rt_dst->gw.s_addr));
+        struct sr_arpentry *entry = sr_arpcache_lookup(&(sr->cache), rt_dst->gw.s_addr);
 
         if (entry) {
             /* use next_hop_ip->mac mapping in entry to send the packet */
@@ -494,7 +502,7 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
 
         sr_build_ip_packet(
             sr_get_interface(sr, interface)->ip,
-            ntohl(ip_hdr->ip_src),
+            ip_hdr->ip_src,
             ip_protocol_icmp,
 
             sr_build_icmp_t3_packet(
@@ -561,8 +569,8 @@ sr_constructed_packet_t *sr_build_arp_packet(uint32_t ip_src, uint32_t ip_dst, u
     arp_hdr->ar_hln = 6; /* 6 byte ethernet addrs */
     arp_hdr->ar_pln = 4; /* 4 byte IP addrs */
 
-    arp_hdr->ar_sip = htonl(ip_src);
-    arp_hdr->ar_tip = htonl(ip_dst);
+    arp_hdr->ar_sip = ip_src;
+    arp_hdr->ar_tip = ip_dst;
     arp_hdr->ar_op = htons(ar_op);
 
     memcpy(arp_hdr->ar_sha,ether_shost,ETHER_ADDR_LEN);
@@ -574,16 +582,20 @@ sr_constructed_packet_t *sr_build_arp_packet(uint32_t ip_src, uint32_t ip_dst, u
 /* Creates an IP header, returning the packet */
 
 sr_constructed_packet_t *sr_build_ip_packet(uint32_t ip_src, uint32_t ip_dst, uint8_t ip_p, sr_constructed_packet_t* payload) {
+
     sr_constructed_packet_t* ip_packet = sr_grow_or_create_payload(payload, sizeof(sr_ip_hdr_t));
 
     sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*)(ip_packet->buf);
 
     /* Fill in values, with due respect for byte order */
 
-    ip_hdr->ip_src = htonl(ip_src);
-    ip_hdr->ip_dst = htonl(ip_dst);
+    ip_hdr->ip_hl = 0x05; /* 20, because some strange bitfield shennanigans is going on */
+    ip_hdr->ip_v = 0x04; /* 4 */
+    ip_hdr->ip_src = ip_src;
+    ip_hdr->ip_dst = ip_dst;
     ip_hdr->ip_p = ip_p; /* one byte, no need for htons */
     ip_hdr->ip_ttl = (uint8_t)64; /* one byte, no need for htons */
+    ip_hdr->ip_len = htons(ip_packet->len);
 
     ip_hdr->ip_sum = cksum((const void*)ip_hdr,sizeof(sr_ip_hdr_t));
 
@@ -592,15 +604,22 @@ sr_constructed_packet_t *sr_build_ip_packet(uint32_t ip_src, uint32_t ip_dst, ui
 
 /* Creates an ICMP header, returning the packet to this point */
 
-sr_constructed_packet_t *sr_build_icmp_packet(uint8_t icmp_type, uint8_t icmp_code, sr_constructed_packet_t* payload) {
-    sr_constructed_packet_t* icmp_packet = sr_grow_or_create_payload(payload, sizeof(sr_icmp_hdr_t));
+sr_constructed_packet_t *sr_build_icmp_packet(uint8_t icmp_type, uint8_t icmp_code, uint8_t* trigger_packet) {
+
+    unsigned int size = sizeof(sr_icmp_hdr_t) + (trigger_packet == NULL ? 0 : ICMP_DATA_SIZE);
+
+    sr_constructed_packet_t* icmp_packet = sr_grow_or_create_payload(NULL, size);
 
     sr_icmp_hdr_t* icmp_hdr = (sr_icmp_hdr_t*)(icmp_packet->buf);
 
     icmp_hdr->icmp_type = icmp_type;
     icmp_hdr->icmp_code = icmp_code;
 
-    icmp_hdr->icmp_sum = cksum((const void*)icmp_hdr,sizeof(sr_icmp_hdr_t));
+    if (trigger_packet != NULL) {
+        memcpy(icmp_packet->buf + sizeof(sr_icmp_hdr_t), trigger_packet, ICMP_DATA_SIZE);
+    }
+
+    icmp_hdr->icmp_sum = htons(cksum((const void*)icmp_hdr,size));
 
     return icmp_packet;
 }
@@ -623,7 +642,7 @@ sr_constructed_packet_t *sr_build_icmp_t3_packet(uint8_t icmp_type, uint8_t icmp
 
     memcpy(icmp_hdr->data, trigger_packet, ICMP_DATA_SIZE);
 
-    icmp_hdr->icmp_sum = cksum((const void*)icmp_hdr,sizeof(sr_icmp_t3_hdr_t));
+    icmp_hdr->icmp_sum = htons(cksum((const void*)icmp_hdr,sizeof(sr_icmp_t3_hdr_t)));
 
     return icmp_packet;
 }

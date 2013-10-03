@@ -76,7 +76,7 @@ void sr_handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
 
                     sr_build_ip_packet(
                         rebound_if->ip,
-                        ntohl(ip_hdr->ip_src),
+                        ip_hdr->ip_src,
                         ip_protocol_icmp,
 
                         sr_build_icmp_t3_packet(
@@ -108,7 +108,7 @@ void sr_handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
                 ether_broadcast[i] = ~((uint8_t)0);
             }
 
-            /* If we're processing this, then it must packets waiting */
+            /* If we're processing this, then it must have packets waiting */
             assert(req->packets != 0);
 
             /* Broadcast our ARP request on our interface */
@@ -124,8 +124,8 @@ void sr_handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
                 ethertype_arp,
 
                 sr_build_arp_packet(
-                    ntohl(sr_get_interface(sr, req->packets->iface)->ip),
-                    ntohl(req->ip),
+                    sr_get_interface(sr, req->packets->iface)->ip,
+                    req->ip,
                     sr_get_interface(sr, req->packets->iface)->addr,
                     ether_broadcast,
                     arp_op_request,
