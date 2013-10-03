@@ -646,10 +646,15 @@ int sr_unit_test_8(sr_unit_test_shared_state_t *shared_state) {
             sr_build_icmp_packet(
                 ICMP_TYPE_TTL_EXCEEDED,
                 ICMP_CODE_TTL_EXCEEDED,
-                NULL
+                (uint8_t*)ip_hdr
             )
         )
     );
+
+    sr_ip_hdr_t* ip_inside_icmp = (sr_ip_hdr_t*)(outgoing_icmp_packet->buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t) + 4);
+    ip_inside_icmp->ip_ttl = 0;
+    ip_inside_icmp->ip_sum = 0;
+    ip_inside_icmp->ip_sum = cksum((const void*)ip_inside_icmp,sizeof(sr_ip_hdr_t));
 
     /* Run the Unit Test */
 
@@ -1086,24 +1091,23 @@ int sr_unit_test_packet(struct sr_instance* sr /* borrowed */,
                                     if (dst_icmp->icmp_code != last_icmp->icmp_code) {
                                         printf("Desired ICMP code %i, sent ICMP code %i\n", dst_icmp->icmp_code, last_icmp->icmp_code);
                                     }
+                                    if (memcmp(dst_icmp->data,last_icmp->data,ICMP_DATA_SIZE) != 0) {
+                                        puts("Desired ICMP body:");
+                                        int i;
+                                        for (i = 0; i < ICMP_DATA_SIZE; i++) {
+                                            printf("%x ",dst_icmp->data[i]);
+                                        }
+                                        puts("\nsent ICMP body:");
+                                        for (i = 0; i < ICMP_DATA_SIZE; i++) {
+                                            printf("%x ",last_icmp->data[i]);
+                                        }
+                                        printf("\n");
+                                    }
                                     if (dst_icmp->icmp_type == 3) {
                                         if (dst_icmp->next_mtu != last_icmp->next_mtu) {
                                             printf("Desired next mtu %i, sent next mtu %i\n", dst_icmp->next_mtu, last_icmp->next_mtu);
                                         }
-                                        if (memcmp(dst_icmp->data,last_icmp->data,ICMP_DATA_SIZE) != 0) {
-                                            puts("Desired ICMP body:");
-                                            int i;
-                                            for (i = 0; i < ICMP_DATA_SIZE; i++) {
-                                                printf("%x ",dst_icmp->data[i]);
-                                            }
-                                            puts("\nsent ICMP body:");
-                                            for (i = 0; i < ICMP_DATA_SIZE; i++) {
-                                                printf("%x ",last_icmp->data[i]);
-                                            }
-                                            printf("\n");
-                                        }
                                     }
-
                                     puts("FAILED\n" KWHT);
                                 }
                                 else {

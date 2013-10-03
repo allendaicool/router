@@ -281,7 +281,13 @@ void sr_handlepacket_ip(struct sr_instance* sr,
     /* Decrement time to live */
 
     printf("TTL: %i\n", ip_hdr->ip_ttl);
-    if (--(ip_hdr->ip_ttl) <= 0) {
+
+    /* Recalculate the cksum after changing the TTL */
+
+    ip_hdr->ip_ttl--;
+    ip_hdr->ip_sum = cksum((const void*)ip_hdr, sizeof(sr_ip_hdr_t));
+
+    if (ip_hdr->ip_ttl <= 0) {
         puts("Packet TTL expired");
 
         /* Send out a ICMP port unreachable response */
@@ -304,16 +310,10 @@ void sr_handlepacket_ip(struct sr_instance* sr,
             )
         );
 
-        sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*)(outgoing_icmp_packet->buf+sizeof(sr_ethernet_hdr_t));
-
         sr_try_send_ip_packet(sr, ntohl(ip_hdr->ip_src), (sr_ethernet_hdr_t*)outgoing_icmp_packet->buf, outgoing_icmp_packet->len, interface, 1);
 
         return;
     }
-
-    /* Recalculate the cksum after changing the TTL */
-
-    ip_hdr->ip_sum = cksum((const void*)ip_hdr, sizeof(sr_ip_hdr_t));
 
     /* Check for any IP packets destined for our interfaces */
 
@@ -489,7 +489,7 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
      * Thus, it's time for some ICMP. 
      */
 
-    puts("Nothing in the forwarding table.");
+    puts("Nothing in the forwarding table");
 
     /* Send an ICMP host unreachable error back */
 
@@ -517,6 +517,9 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
 
     if (loop_protect == 1) {
         sr_try_send_ip_packet(sr, ntohl(ip_hdr->ip_src), (sr_ethernet_hdr_t*)outgoing_icmp_packet->buf, outgoing_icmp_packet->len, interface, 0);
+    }
+    else {
+        puts("Forwarding table not set up correctly, or packet IP sources being spoofed. We just received a packet, and there's no entry to send an ICMP response back.");
     }
 }
 
@@ -606,9 +609,7 @@ sr_constructed_packet_t *sr_build_ip_packet(uint32_t ip_src, uint32_t ip_dst, ui
 
 sr_constructed_packet_t *sr_build_icmp_packet(uint8_t icmp_type, uint8_t icmp_code, uint8_t* trigger_packet) {
 
-    unsigned int size = sizeof(sr_icmp_hdr_t) + (trigger_packet == NULL ? 0 : ICMP_DATA_SIZE);
-
-    sr_constructed_packet_t* icmp_packet = sr_grow_or_create_payload(NULL, size);
+    sr_constructed_packet_t* icmp_packet = sr_grow_or_create_payload(NULL, sizeof(sr_icmp_hdr_t) + 4 + ICMP_DATA_SIZE);
 
     sr_icmp_hdr_t* icmp_hdr = (sr_icmp_hdr_t*)(icmp_packet->buf);
 
@@ -616,10 +617,10 @@ sr_constructed_packet_t *sr_build_icmp_packet(uint8_t icmp_type, uint8_t icmp_co
     icmp_hdr->icmp_code = icmp_code;
 
     if (trigger_packet != NULL) {
-        memcpy(icmp_packet->buf + sizeof(sr_icmp_hdr_t), trigger_packet, ICMP_DATA_SIZE);
+        memcpy(icmp_packet->buf + sizeof(sr_icmp_hdr_t) + 4, trigger_packet, ICMP_DATA_SIZE);
     }
 
-    icmp_hdr->icmp_sum = htons(cksum((const void*)icmp_hdr,size));
+    icmp_hdr->icmp_sum = htons(cksum((const void*)icmp_hdr,sizeof(sr_icmp_hdr_t)));
 
     return icmp_packet;
 }
