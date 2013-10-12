@@ -257,7 +257,7 @@ void sr_free_if_list(struct sr_instance* sr)
     
     while(if_walker)
     {
-        sr_if* if_walker_next = if_walker->next; 
+        struct sr_if* if_walker_next = if_walker->next; 
         free(if_walker);
         if_walker = if_walker_next;
     }
