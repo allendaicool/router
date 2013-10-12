@@ -187,7 +187,7 @@ sr_ether_addrs_match_interface( struct sr_instance* sr, /* borrowed */
 int sr_mock_receive_packet(struct sr_instance* sr /* borrowed */,
                          uint8_t* buf /* borrowed */ ,
                          unsigned int len,
-                         const char* iface /* borrowed */)
+                         char* iface /* borrowed */)
 {
     /* REQUIRES */
     assert(sr);
