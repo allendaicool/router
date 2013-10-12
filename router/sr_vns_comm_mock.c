@@ -202,6 +202,8 @@ int sr_mock_receive_packet(struct sr_instance* sr /* borrowed */,
             buf,
             len,
             iface);
+
+    return 0;
 }
 
 /*-----------------------------------------------------------------------------
