@@ -48,8 +48,6 @@ void sr_init(struct sr_instance* sr)
 
     pthread_create(&thread, &(sr->attr), sr_arpcache_timeout, sr);
     
-    /* Add initialization code here! */
-
 } /* -- sr_init -- */
 
 /*---------------------------------------------------------------------
@@ -506,12 +504,15 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
 
         sr_free_packet(payload);
 
-        if (ip_hdr->ip_p == htons(ip_protocol_icmp)) {
+        if (ip_hdr->ip_p == ip_protocol_icmp) {
             sr_icmp_hdr_t* icmp_hdr = (sr_icmp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
-            if (icmp_hdr->icmp_type == htons(3)) {
+            if (icmp_hdr->icmp_type == 3) { /* Don't foward anything with type 3 */
                 puts("Was an ICMP error. Dropping.");
                 return;
             }
+        }
+        else {
+            puts("Wasn't ICMP.");
         }
 
         puts("Wasn't an ICMP error.");

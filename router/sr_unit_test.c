@@ -87,17 +87,11 @@ int sr_mock_receive_packet(struct sr_instance* sr /* borrowed */,
  *
  * Test 11: ARP request times out after 5 requests, ICMP unreachable sent out
  *
- * ---------- TODO ----------
- *
- * Test 12: Receive an ICMP unreachable out to an unreachable hose, don't respond.
+ * Test 12: Receive an ICMP unreachable out to an unreachable host. Drop it.
  *
  * Test 13: Receive an IP header that's too short. Drop it.
  *
  * Test 14: Receive an ARP header that's too short. Drop it.
- *
- * Test 15: Receive an IP header with a corrupted checksum.
- *
- * Test 16: Receive an ARP header with a corrupted checksum.
  *
  *---------------------------------------------------------------------------*/
 
@@ -926,11 +920,165 @@ int sr_unit_test_11(sr_unit_test_shared_state_t *shared_state) {
     return result;
 }
 
+/**********************************************************
+ *                    TEST 12
+ ***********************************************************
+ * An ICMP host unreachable arrives to be forwarded to a host
+ * that doesn't exist. To avoid infinite loops, we drop the
+ * offending packet with no response. */
+
+int sr_unit_test_12(sr_unit_test_shared_state_t *shared_state) {
+
+    /* Here's our dummy TCP packet, copy pasted from another test,
+     * because it's only here to make Wireshark happy that the incoming
+     * ICMP packet is in fact a valid packet. */
+    
+    sr_constructed_packet_t *incoming_tcp_packet = sr_build_ip_packet(
+        shared_state->host_b_ip,
+        shared_state->host_a_ip,
+        ip_protocol_tcp,
+
+        sr_build_dummy_tcp_packet()
+    );
+
+    /* Here's our incoming IMCP host unreachable packet, on its way to
+     * an unreachable host. We shouldn't hear a response back. */
+    
+    sr_constructed_packet_t *incoming_icmp_packet = sr_build_eth_packet(
+        shared_state->host_b_gw_eth,
+        shared_state->me_b_eth,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            shared_state->host_b_ip,
+            shared_state->host_a_ip,
+            ip_protocol_icmp,
+
+            sr_build_icmp_t3_packet(
+                ICMP_TYPE_HOST_UNREACHABLE,
+                ICMP_CODE_HOST_UNREACHABLE,
+                (uint8_t*)(incoming_tcp_packet->buf)
+            )
+        )
+    );
+
+    /* Run the Unit Test */
+
+    int result = sr_unit_test_packet(shared_state->sr,
+            "12 - ICMP Host Unreachable is Unreachable. Drop.",
+            incoming_icmp_packet->buf,
+            incoming_icmp_packet->len,
+            shared_state->if_b_name,
+            0, /* we don't want a response */
+            NULL,
+            0,
+            NULL,
+            0);
+
+    /* Cleanup */
+
+    sr_free_packet(incoming_tcp_packet);
+    sr_free_packet(incoming_icmp_packet);
+
+    return result;
+}
+
+/**********************************************************
+ *                    TEST 13
+ ***********************************************************
+ * Test a packet that is too short to contain an IP header.
+ * This should provoke no response. */
+
+int sr_unit_test_13(sr_unit_test_shared_state_t *shared_state) {
+
+    /* Here's our incoming packet. The IP header is going to be too short,
+     * so we should drop it right away. */
+    
+    sr_constructed_packet_t *incoming_corrupted_ip_packet = sr_build_eth_packet(
+        shared_state->host_a_gw_eth,
+        shared_state->me_a_eth,
+        ethertype_ip,
+
+        sr_build_ip_packet(
+            shared_state->host_a_ip,
+            shared_state->host_b_ip,
+            ip_protocol_tcp,
+
+            sr_build_dummy_tcp_packet()
+        )
+    );
+
+    /* Run the Unit Test */
+
+    int result = sr_unit_test_packet(shared_state->sr,
+            "13 - Packet too short to contain IP header",
+            incoming_corrupted_ip_packet->buf,
+            sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) - 8, /* Just a bit too short */
+            shared_state->if_a_name,
+            0, /* we don't want a response */
+            NULL,
+            0,
+            NULL,
+            0);
+
+    /* Cleanup */
+
+    sr_free_packet(incoming_corrupted_ip_packet);
+
+    return result;
+}
+
+/**********************************************************
+ *                    TEST 14
+ ***********************************************************
+ * Test a packet that is too short to contain an ARP header.
+ * This should provoke no response. */
+
+int sr_unit_test_14(sr_unit_test_shared_state_t *shared_state) {
+
+    /* Here's our incoming packet. The ARp header is going to be too short,
+     * so we should drop it right away. */
+    
+    sr_constructed_packet_t *incoming_corrupted_arp_packet = sr_build_eth_packet(
+        shared_state->host_b_gw_eth,
+        shared_state->me_b_eth,
+        ethertype_arp,
+
+        sr_build_arp_packet(
+            shared_state->host_b_gw_ip,
+            shared_state->me_b_ip,
+            shared_state->host_b_gw_eth,
+            shared_state->me_b_eth,
+            arp_op_reply,
+            NULL
+        )
+    );
+
+    /* Run the Unit Test */
+
+    int result = sr_unit_test_packet(shared_state->sr,
+            "14 - Packet too short to contain IP header",
+            incoming_corrupted_arp_packet->buf,
+            sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t) - 8, /* Just a bit too short */
+            shared_state->if_a_name,
+            0, /* we don't want a response */
+            NULL,
+            0,
+            NULL,
+            0);
+
+    /* Cleanup */
+
+    sr_free_packet(incoming_corrupted_arp_packet);
+
+    return result;
+}
+
 /* Run the actual unit tests */
 
 void sr_run_unit_tests(struct sr_instance* sr /* borrowed */)
 {
-    int num_tests = 11;
+    int num_tests = 14;
     int successful_tests = 0;
 
     puts("\n********\nRUNNING UNIT TESTS\n********\n");
@@ -952,6 +1100,9 @@ void sr_run_unit_tests(struct sr_instance* sr /* borrowed */)
     successful_tests += sr_unit_test_9(shared_state);
     successful_tests += sr_unit_test_10(shared_state);
     successful_tests += sr_unit_test_11(shared_state);
+    successful_tests += sr_unit_test_12(shared_state);
+    successful_tests += sr_unit_test_13(shared_state);
+    successful_tests += sr_unit_test_14(shared_state);
 
     /* Clean up */
 
