@@ -139,7 +139,9 @@ void sr_handlepacket_arp(struct sr_instance* sr,
 
     arp_hdr = (sr_arp_hdr_t*)packet;
 
-    printf("from (network order) %s\n",ip_to_str(arp_hdr->ar_sip));
+    char* temp_ip = ip_to_str(arp_hdr->ar_sip);
+    printf("from (network order) %s\n",temp_ip);
+    free(temp_ip);
 
     /* Endianness */
     unsigned short ar_op = ntohs(arp_hdr->ar_op);
@@ -153,9 +155,9 @@ void sr_handlepacket_arp(struct sr_instance* sr,
         case arp_op_request:
             puts("received ARP OP request.");
 
-            /* The VNS transport layer shouldn't allow any packets that aren't for our
+            /* The VNS transport layer shouldn't allow any ARP packets that aren't for our
              * interface, but it's still worth checking, just in case something goes wrong
-             * of *gasp* we write a unit test about it */
+             * or *gasp* we write a unit test about it */
 
             struct sr_if* iface = sr_get_interface(sr, interface);
             if (iface->ip == arp_hdr->ar_tip) {
@@ -211,14 +213,13 @@ void sr_handlepacket_arp(struct sr_instance* sr,
                 struct sr_packet* packet_walker = req->packets;
                 while (packet_walker) {
 
-                    /* Copy the newly acquired dest MAC address over */
+                    /* Send the packet, which will do the lookup against the ARP table we just filled with the answer */
 
-                    sr_ethernet_hdr_t* packet_eth_hdr = (sr_ethernet_hdr_t*)(packet_walker->buf);
-                    memcpy(packet_eth_hdr->ether_dhost,eth_hdr->ether_shost,ETHER_ADDR_LEN);
+                    sr_try_send_ip_packet(sr, packet_walker->ip_dst, packet_walker->payload, packet_walker->ip_hdr);
 
-                    /* Send the adjusted packet down the correct interface */
+                    /* Remove the reference to the packet on this buffered request */
 
-                    sr_send_packet(sr, packet_walker->buf, packet_walker->len, packet_walker->iface);
+                    packet_walker->payload = NULL;
                     
                     /* Continue walking the linked list */
 
@@ -290,27 +291,16 @@ void sr_handlepacket_ip(struct sr_instance* sr,
     if (ip_hdr->ip_ttl <= 0) {
         puts("Packet TTL expired");
 
-        /* Send out a ICMP port unreachable response */
+        /* Send out a ICMP TTL expired response */
 
-        sr_constructed_packet_t *outgoing_icmp_packet = sr_build_eth_packet(
-            sr_get_interface(sr, interface)->addr,
-            eth_hdr->ether_shost,
-            ethertype_ip,
-
-            sr_build_ip_packet(
-                sr_get_interface(sr, interface)->ip,
-                ip_hdr->ip_src,
-                ip_protocol_icmp,
-
-                sr_build_icmp_packet(
-                    ICMP_TYPE_TTL_EXCEEDED,
-                    ICMP_CODE_TTL_EXCEEDED,
-                    packet
-                )
-            )
+        sr_try_send_ip_packet(sr, ip_hdr->ip_src, 
+            sr_build_icmp_packet(
+                ICMP_TYPE_TTL_EXCEEDED,
+                ICMP_CODE_TTL_EXCEEDED,
+                packet
+            ),
+            NULL
         );
-
-        sr_try_send_ip_packet(sr, ntohl(ip_hdr->ip_src), (sr_ethernet_hdr_t*)outgoing_icmp_packet->buf, outgoing_icmp_packet->len, interface, 1);
 
         return;
     }
@@ -344,36 +334,33 @@ void sr_handlepacket_ip(struct sr_instance* sr,
     
                 /* Send out a ICMP port unreachable response */
 
-                sr_constructed_packet_t *outgoing_icmp_packet = sr_build_eth_packet(
-                    sr_get_interface(sr, interface)->addr,
-                    eth_hdr->ether_shost,
-                    ethertype_ip,
-
-                    sr_build_ip_packet(
-                        sr_get_interface(sr, interface)->ip,
-                        ip_hdr->ip_src,
-                        ip_protocol_icmp,
-
-                        sr_build_icmp_t3_packet(
-                            ICMP_TYPE_PORT_UNREACHABLE,
-                            ICMP_CODE_PORT_UNREACHABLE,
-                            (uint8_t*)ip_hdr
-                        )
-                    )
+                sr_try_send_ip_packet(sr, ip_hdr->ip_src,
+                    sr_build_icmp_t3_packet(
+                        ICMP_TYPE_PORT_UNREACHABLE,
+                        ICMP_CODE_PORT_UNREACHABLE,
+                        (uint8_t*)ip_hdr
+                    ),
+                    NULL
                 );
-
-                sr_try_send_ip_packet(sr, ntohl(ip_hdr->ip_src), (sr_ethernet_hdr_t*)outgoing_icmp_packet->buf, outgoing_icmp_packet->len, interface, 1);
 
                 return;
         }
 
-        puts("IP packet protocol unrecognized.");
+        puts("IP packet protocol unsupported. Dropping packet.");
         return;
     }
 
+    /* Build a packet struct to pass in the contents of the IP we're forwarding */
+
+    uint8_t* payload_buf = ((uint8_t*)packet) + sizeof(sr_ip_hdr_t);
+    int payload_len = len - sizeof(sr_ip_hdr_t);
+
+    sr_constructed_packet_t *payload = sr_grow_or_create_payload(NULL, payload_len);
+    memcpy(payload->buf, payload_buf, payload_len);
+
     /* Handles checking the routing table, and making any ARP requests we need to make */
 
-    sr_try_send_ip_packet(sr, ntohl(ip_hdr->ip_dst), eth_hdr, len + sizeof(sr_ethernet_hdr_t), interface, 1);
+    sr_try_send_ip_packet(sr, ip_hdr->ip_dst, payload, ip_hdr);
 }
 
 
@@ -413,25 +400,14 @@ void sr_handlepacket_icmp(struct sr_instance* sr,
 
             /* Send out a ICMP port unreachable response */
 
-            sr_constructed_packet_t *outgoing_icmp_packet = sr_build_eth_packet(
-                sr_get_interface(sr, interface)->addr,
-                eth_hdr->ether_shost,
-                ethertype_ip,
-
-                sr_build_ip_packet(
-                    sr_get_interface(sr, interface)->ip,
-                    ip_hdr->ip_src,
-                    ip_protocol_icmp,
-
-                    sr_build_icmp_packet(
-                        ICMP_TYPE_ECHO_REPLY,
-                        ICMP_CODE_ECHO_REPLY,
-                        NULL
-                    )
-                )
+            sr_try_send_ip_packet(sr, ip_hdr->ip_src,
+                sr_build_icmp_packet(
+                    ICMP_TYPE_ECHO_REPLY,
+                    ICMP_CODE_ECHO_REPLY,
+                    NULL
+                ),
+                NULL
             );
-
-            sr_try_send_ip_packet(sr, ntohl(ip_hdr->ip_src), (sr_ethernet_hdr_t*)outgoing_icmp_packet->buf, outgoing_icmp_packet->len, interface, 1);
         }
     }
 }
@@ -440,15 +416,13 @@ void sr_handlepacket_icmp(struct sr_instance* sr,
  * to send a packet along IP */
 
 void sr_try_send_ip_packet(struct sr_instance* sr,
-        uint32_t ip_dst,
-        sr_ethernet_hdr_t* eth_hdr,
-        unsigned int len,
-        char* interface,
-        int loop_protect)
+        uint32_t ip_dst, /* network order */
+        sr_constructed_packet_t *payload,
+        sr_ip_hdr_t *ip_hdr)
 {
     /* Check for longest match in routing table */
 
-    struct sr_rt* rt_dst = sr_rt_longest_match(sr,htonl(ip_dst));
+    struct sr_rt* rt_dst = sr_rt_longest_match(sr,ip_dst);
 
     /* If we found any matches, forward the packet */
 
@@ -458,27 +432,57 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
         printf("Forwarding IP packet to %s\n",temp_ip);
         free(temp_ip);
 
-        /* Change the source MAC address of the packet to reflect the interface we're sending out through.
-         * Otherwise, though, the packet (including ethernet header) is forwarded unchanged. */
+        /* Grab the interface we'll be sending the packet out through */
 
         struct sr_if* gw_if = sr_get_interface(sr, rt_dst->interface);
-        memcpy(eth_hdr->ether_shost,gw_if->addr,ETHER_ADDR_LEN);
 
         /* Lookups in the ARP cache keep IP addresses in network byte order, so we need to convert. */
 
         struct sr_arpentry *entry = sr_arpcache_lookup(&(sr->cache), rt_dst->gw.s_addr);
 
         if (entry) {
+
+            puts("ARP cache entry exists.");
+
             /* use next_hop_ip->mac mapping in entry to send the packet */
-            puts("ARP cache entry exists");
-            memcpy(eth_hdr->ether_dhost,entry->mac,ETHER_ADDR_LEN);
-            sr_send_packet(sr, (uint8_t*)eth_hdr, len, rt_dst->interface);
+            
+            sr_constructed_packet_t *ip_packet = sr_build_eth_packet(
+                gw_if->addr, /* src */
+                entry->mac, /* dst */
+                ethertype_ip,
+
+                sr_build_ip_packet(
+                    gw_if->ip, /* src */
+                    ip_dst, /* dst */
+                    ip_protocol_icmp,
+
+                    payload
+                )
+            );
+
+            /* If they pass in an ip header, lets copy it over */
+
+            if (ip_hdr != NULL) {
+                sr_ip_hdr_t* ip_hdr_buf = (sr_ip_hdr_t*)(ip_packet->buf + sizeof(sr_ethernet_hdr_t));
+                memcpy(ip_hdr_buf, ip_hdr, sizeof(sr_ip_hdr_t));
+            }
+
+            /* Send out the packet we just built */
+
+            sr_send_packet(sr, (uint8_t*)ip_packet->buf, ip_packet->len, rt_dst->interface);
+
+            /* Cleanup */
 
             free(entry);
+            sr_free_packet(ip_packet);
         }
         else {
-            puts("ARP cache entry doesn't exist. Queuing.");
-            struct sr_arpreq *req = sr_arpcache_queuereq(&sr->cache, rt_dst->gw.s_addr, (uint8_t*)eth_hdr, len, rt_dst->interface, interface);
+
+            puts("ARP cache entry doesn't exist. Queuing the packet contents.");
+
+            /* We don't free the payload, because it gets put directly into the queue */
+
+            struct sr_arpreq *req = sr_arpcache_queuereq(&sr->cache, rt_dst->gw.s_addr, ip_dst, payload, ip_hdr, rt_dst->interface);
             sr_handle_arpreq(sr,req);
         }
 
@@ -486,63 +490,45 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
     }
 
     /* If we get here, it means that it's not for us, and there's noone to forward it to.
-     * Thus, it's time for some ICMP. 
+     * Thus, it's time for some ICMP, if we were trying to send an IP request.
      */
 
-    puts("Nothing in the forwarding table");
+    puts("Nothing in the forwarding table for the destination IP.");
 
-    /* Send an ICMP host unreachable error back */
+    /* If ip_hdr == NULL, then we were sending this packet out, and there's no reason to
+     * respond to ourselves with an ICMP host unreachable error.
+     */
 
-    sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*)(((uint8_t*)eth_hdr)+sizeof(sr_ethernet_hdr_t));
+    if (ip_hdr != NULL) {
+        puts("Was an IP packet (as expected). Checking if its an ICMP error, which we'll drop.");
 
-    sr_constructed_packet_t *outgoing_icmp_packet = sr_build_eth_packet(
-        sr_get_interface(sr, interface)->addr,
-        eth_hdr->ether_shost,
-        ethertype_ip,
+        /* Free the payload we won't be using */
 
-        sr_build_ip_packet(
-            sr_get_interface(sr, interface)->ip,
-            ip_hdr->ip_src,
-            ip_protocol_icmp,
+        sr_free_packet(payload);
 
+        if (ip_hdr->ip_p == htons(ip_protocol_icmp)) {
+            sr_icmp_hdr_t* icmp_hdr = (sr_icmp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
+            if (icmp_hdr->icmp_type == htons(3)) {
+                puts("Was an ICMP error. Dropping.");
+                return;
+            }
+        }
+
+        puts("Wasn't an ICMP error.");
+
+        /* Recurse to send this packet back */
+
+        sr_try_send_ip_packet(sr, ip_hdr->ip_src, 
             sr_build_icmp_t3_packet(
                 ICMP_TYPE_HOST_UNREACHABLE,
                 ICMP_CODE_HOST_UNREACHABLE,
+
+                /* reconstruct the original IP packet */
+
                 (uint8_t*)ip_hdr
-            )
-        )
-    );
-
-    /* Very slight risk of infinite loop here if we don't have records for the sending address either. Use loop_protect to fix that. */
-
-    if (loop_protect == 1) {
-        sr_try_send_ip_packet(sr, ntohl(ip_hdr->ip_src), (sr_ethernet_hdr_t*)outgoing_icmp_packet->buf, outgoing_icmp_packet->len, interface, 0);
-    }
-    else {
-        puts("Forwarding table not set up correctly, or packet IP sources being spoofed. We just received a packet, and there's no entry to send an ICMP response back.");
-    }
-}
-
-/* Conditionally grows a payload, leaving size free space at the *FRONT* of the packet, or
- * creates a new packet, if NULL is passed in. Either way, there is size free space at the
- * buf pointer, on the heap. Sets all new memory to 0. */
-
-sr_constructed_packet_t *sr_grow_or_create_payload(sr_constructed_packet_t* payload, unsigned long size) {
-    if (payload != NULL) {
-        uint8_t *new_buf = malloc(size + payload->len);
-        memcpy(new_buf + size, payload->buf, payload->len);
-        free(payload->buf);
-        payload->len = payload->len + size;
-        payload->buf = new_buf;
-        memset(payload->buf,0,size);
-        return payload;
-    }
-    else {
-        sr_constructed_packet_t* new_packet = malloc(sizeof(sr_constructed_packet_t));
-        new_packet->len = size;
-        new_packet->buf = malloc(size);
-        memset(new_packet->buf,0,size);
-        return new_packet;
+            ),
+            NULL
+        );
     }
 }
 

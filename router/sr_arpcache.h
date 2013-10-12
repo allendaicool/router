@@ -70,15 +70,18 @@
 #include <time.h>
 #include <pthread.h>
 #include "sr_if.h"
+#include "sr_packet.h"
 
 #define SR_ARPCACHE_SZ    100  
 #define SR_ARPCACHE_TO    15.0
 
 struct sr_packet {
-    uint8_t *buf;               /* A raw Ethernet frame, presumably with the dest MAC empty */
-    unsigned int len;           /* Length of raw Ethernet frame */
+    sr_constructed_packet_t *payload; /* A payload, without IP or Ethernet wrappings */
     char *iface;                /* The outgoing interface */
-    char *src_iface;            /* The incoming interface */
+    uint32_t ip_dst;            /* The outgoing IP destination */
+
+    sr_ip_hdr_t *ip_hdr;
+
     struct sr_packet *next;
 };
 
@@ -129,11 +132,11 @@ struct sr_arpentry *sr_arpcache_lookup(struct sr_arpcache *cache, uint32_t ip);
    A pointer to the ARP request is returned; it should be freed. The caller
    can remove the ARP request from the queue by calling sr_arpreq_destroy. */
 struct sr_arpreq *sr_arpcache_queuereq(struct sr_arpcache *cache,
-                         uint32_t ip,
-                         uint8_t *packet,               /* borrowed */
-                         unsigned int packet_len,
-                         char *iface,
-                         char *src_iface);
+                                       uint32_t ip_gw,
+                                       uint32_t ip_dst,
+                                       sr_constructed_packet_t *payload, /* A payload, without IP or Ethernet wrappings */
+                                       sr_ip_hdr_t *ip_hdr,
+                                       char *iface);
 
 /* This method performs two functions:
    1) Looks up this IP in the request queue. If it is found, returns a pointer

@@ -25,8 +25,12 @@ void sr_arpcache_sweepreqs(struct sr_instance *sr) {
     struct sr_arpreq *req_walker = sr->cache.requests;
 
     while (req_walker != NULL) {
+        /* We need to buffer the next pointer, bc handle_arpreq can free the
+         * request walker.
+         */
+        struct sr_arpreq *next_req = req_walker->next;
         sr_handle_arpreq(sr, req_walker);
-        req_walker = req_walker->next;
+        req_walker = next_req;
     }
 
 }
@@ -51,7 +55,7 @@ void sr_handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
                on this request
             */
 
-            char* temp_ip = ip_to_str(ntohl(req->ip));
+            char* temp_ip = ip_to_str(req->ip);
             printf("ARP to %s expired! Sending expiration ICMPs\n",temp_ip);
             free(temp_ip);
 
@@ -60,34 +64,36 @@ void sr_handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
             struct sr_packet* packet_walker = req->packets;
             while (packet_walker) {
 
-                /* Copy the newly acquired dest MAC address over */
+                /* If the packet was an IP packet, otherwise we drop */
 
-                sr_ethernet_hdr_t* eth_hdr = (sr_ethernet_hdr_t*)(packet_walker->buf);
-                sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*)(packet_walker->buf + sizeof(sr_ethernet_hdr_t));
+                if (packet_walker->ip_hdr != NULL) {
 
-                struct sr_if* rebound_if = sr_get_interface(sr, packet_walker->src_iface); /* just to put in some temp values for the packet */
+                    /* Check that the packet wasn't being sent FROM one of our interfaces, because
+                     * we don't need to create an infinite loop here. */
 
-                /* Send out a ICMP port unreachable response */
+                    struct sr_if* from_my_interface = sr_get_interface_ip(sr, ntohl(packet_walker->ip_hdr->ip_src));
+                    if (from_my_interface != 0) {
+                        puts("Not sending an ICMP host unreachable message back to myself");
+                        continue;
+                    }
 
-                sr_constructed_packet_t *outgoing_icmp_packet = sr_build_eth_packet(
-                    rebound_if->addr,
-                    eth_hdr->ether_shost, /* This gets overwritten in send_ip_packet */
-                    ethertype_ip,
+                    /* Attempt to send an ICMP back to the sender */
 
-                    sr_build_ip_packet(
-                        rebound_if->ip,
-                        ip_hdr->ip_src,
-                        ip_protocol_icmp,
-
+                    sr_try_send_ip_packet(sr,
+                        packet_walker->ip_hdr->ip_src, /* network order */
                         sr_build_icmp_t3_packet(
                             ICMP_TYPE_HOST_UNREACHABLE,
                             ICMP_CODE_HOST_UNREACHABLE,
-                            packet_walker->buf + sizeof(sr_ethernet_hdr_t)
-                        )
-                    )
-                );
+                            (uint8_t*)packet_walker->ip_hdr
+                        ),
+                        NULL
+                    );
+                }
+                else {
+                    puts("Attempted to reply with ICMP Host Unreachable for a packet that isn't IP. Dropping it.");
+                    return;
+                }
 
-                sr_try_send_ip_packet(sr, ntohl(ip_hdr->ip_src), (sr_ethernet_hdr_t*)outgoing_icmp_packet->buf, outgoing_icmp_packet->len, rebound_if->name, 1);
                 
                 /* Continue walking the linked list */
 
@@ -109,24 +115,25 @@ void sr_handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
             }
 
             /* If we're processing this, then it must have packets waiting */
+
             assert(req->packets != 0);
 
             /* Broadcast our ARP request on our interface */
 
-            char* temp_ip = ip_to_str(sr_get_interface(sr, req->packets->iface)->ip);
+            struct sr_if* outgoing_if = sr_get_interface(sr, req->packets->iface);
+            char* temp_ip = ip_to_str(outgoing_if->ip);
             printf("Send ARP on interface %s, with IP %s\n",req->packets->iface, temp_ip);
-
             free(temp_ip);
 
             sr_constructed_packet_t *arp_packet = sr_build_eth_packet(
-                sr_get_interface(sr, req->packets->iface)->addr,
+                outgoing_if->addr,
                 ether_broadcast,
                 ethertype_arp,
 
                 sr_build_arp_packet(
-                    sr_get_interface(sr, req->packets->iface)->ip,
+                    outgoing_if->ip,
                     req->ip,
-                    sr_get_interface(sr, req->packets->iface)->addr,
+                    outgoing_if->addr,
                     ether_broadcast,
                     arp_op_request,
                     NULL
@@ -180,17 +187,17 @@ struct sr_arpentry *sr_arpcache_lookup(struct sr_arpcache *cache, uint32_t ip) {
    A pointer to the ARP request is returned; it should not be freed. The caller
    can remove the ARP request from the queue by calling sr_arpreq_destroy. */
 struct sr_arpreq *sr_arpcache_queuereq(struct sr_arpcache *cache,
-                                       uint32_t ip,
-                                       uint8_t *packet,           /* borrowed */
-                                       unsigned int packet_len,
-                                       char *iface,
-                                       char *src_iface)
+                                       uint32_t ip_gw,
+                                       uint32_t ip_dst,
+                                       sr_constructed_packet_t *payload, /* A payload, without IP or Ethernet wrappings */
+                                       sr_ip_hdr_t *ip_hdr,
+                                       char *iface)
 {
     pthread_mutex_lock(&(cache->lock));
     
     struct sr_arpreq *req;
     for (req = cache->requests; req != NULL; req = req->next) {
-        if (req->ip == ip) {
+        if (req->ip == ip_gw) {
             break;
         }
     }
@@ -198,22 +205,32 @@ struct sr_arpreq *sr_arpcache_queuereq(struct sr_arpcache *cache,
     /* If the IP wasn't found, add it */
     if (!req) {
         req = (struct sr_arpreq *) calloc(1, sizeof(struct sr_arpreq));
-        req->ip = ip;
+        req->ip = ip_gw;
         req->next = cache->requests;
         cache->requests = req;
     }
     
     /* Add the packet to the list of packets for this request */
-    if (packet && packet_len && iface) {
+    if (payload && iface) {
         struct sr_packet *new_pkt = (struct sr_packet *)malloc(sizeof(struct sr_packet));
+
+        new_pkt->payload = payload;
+
+        new_pkt->ip_dst = ip_dst;
         
-        new_pkt->buf = (uint8_t *)malloc(packet_len);
-        memcpy(new_pkt->buf, packet, packet_len);
-        new_pkt->len = packet_len;
+        new_pkt->payload = payload;
+
+        if (ip_hdr != NULL) {
+            new_pkt->ip_hdr = (sr_ip_hdr_t *)malloc(ICMP_DATA_SIZE);
+            memcpy((void*)new_pkt->ip_hdr, (void*)ip_hdr, ICMP_DATA_SIZE);
+        }
+        else {
+            new_pkt->ip_hdr = NULL;
+        }
+
 		new_pkt->iface = (char *)malloc(sr_IFACE_NAMELEN);
         strncpy(new_pkt->iface, iface, sr_IFACE_NAMELEN);
-		new_pkt->src_iface = (char *)malloc(sr_IFACE_NAMELEN);
-        strncpy(new_pkt->src_iface, src_iface, sr_IFACE_NAMELEN);
+
         new_pkt->next = req->packets;
         req->packets = new_pkt;
     }
@@ -299,8 +316,10 @@ void sr_arpreq_destroy(struct sr_arpcache *cache, struct sr_arpreq *entry) {
         
         for (pkt = entry->packets; pkt; pkt = nxt) {
             nxt = pkt->next;
-            if (pkt->buf)
-                free(pkt->buf);
+            if (pkt->payload)
+                sr_free_packet(pkt->payload);
+            if (pkt->ip_hdr)
+                free(pkt->ip_hdr);
             if (pkt->iface)
                 free(pkt->iface);
             free(pkt);

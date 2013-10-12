@@ -15,6 +15,7 @@
 
 #include "sr_protocol.h"
 #include "sr_arpcache.h"
+#include "sr_packet.h"
 
 /* we dont like this debug , but what to do for varargs ? */
 #ifdef _DEBUG_
@@ -56,12 +57,6 @@ struct sr_instance
     FILE* logfile;
 };
 
-typedef struct sr_constructed_packet 
-{
-    uint16_t len;
-    uint8_t* buf;
-} sr_constructed_packet_t;
-
 /* -- sr_main.c -- */
 int sr_verify_routing_table(struct sr_instance* sr);
 
@@ -77,7 +72,10 @@ void sr_handlepacket_arp(struct sr_instance* sr, sr_ethernet_hdr_t* eth_hdr, uin
 void sr_handlepacket_ip(struct sr_instance* sr, sr_ethernet_hdr_t* eth_hdr, uint8_t* , unsigned int , char* );
 void sr_handlepacket_icmp(struct sr_instance* sr, sr_ethernet_hdr_t* eth_hdr, sr_ip_hdr_t* ip_hdr, uint8_t* , unsigned int , char* );
 
-void sr_try_send_ip_packet(struct sr_instance* sr,uint32_t ip_dst,sr_ethernet_hdr_t* eth_hdr,unsigned int len,char* interface, int loop_protect);
+void sr_try_send_ip_packet(struct sr_instance* sr,
+        uint32_t ip_dst, /* network order */
+        sr_constructed_packet_t *payload,
+        sr_ip_hdr_t *ip_hdr);
 
 sr_constructed_packet_t *sr_build_eth_packet(uint8_t ether_shost[ETHER_ADDR_LEN], uint8_t ether_dhost[ETHER_ADDR_LEN], uint16_t ether_type, sr_constructed_packet_t* payload);
 sr_constructed_packet_t *sr_build_arp_packet(uint32_t ip_src, uint32_t ip_dst, uint8_t ether_shost[ETHER_ADDR_LEN], uint8_t ether_dhost[ETHER_ADDR_LEN], unsigned short ar_op, sr_constructed_packet_t* payload);

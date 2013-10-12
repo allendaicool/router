@@ -180,6 +180,12 @@ sr_unit_test_shared_state_t *sr_setup_unit_test_shared_state(struct sr_instance 
     return shared_state;
 }
 
+void sr_free_unit_test_shared_state(sr_unit_test_shared_state_t *shared_state) {
+    free(shared_state->if_a_name);
+    free(shared_state->if_b_name);
+    free(shared_state);
+}
+
 /**********************************************************
  *                    TEST 1
  ***********************************************************
@@ -269,6 +275,11 @@ int sr_unit_test_2(sr_unit_test_shared_state_t *shared_state) {
             shared_state->if_b_name,
             0);
 
+    /* Cleanup */
+
+    sr_free_packet(incoming_tcp_packet);
+    sr_free_packet(outgoing_arp_packet);
+
     return result;
 }
 
@@ -335,6 +346,11 @@ int sr_unit_test_3(sr_unit_test_shared_state_t *shared_state) {
             outgoing_tcp_packet->len,
             shared_state->if_b_name,
             0);
+
+    /* Cleanup */
+
+    sr_free_packet(incoming_arp_packet);
+    sr_free_packet(outgoing_tcp_packet);
 
     return result;
 }
@@ -405,6 +421,11 @@ int sr_unit_test_4(sr_unit_test_shared_state_t *shared_state) {
             shared_state->if_b_name,
             0);
 
+    /* Cleanup */
+
+    sr_free_packet(incoming_tcp_packet);
+    sr_free_packet(outgoing_tcp_packet);
+
     return result;
 }
 
@@ -462,6 +483,11 @@ int sr_unit_test_5(sr_unit_test_shared_state_t *shared_state) {
             outgoing_arp_packet->len,
             shared_state->if_b_name,
             0);
+
+    /* Cleanup */
+
+    sr_free_packet(incoming_arp_packet);
+    sr_free_packet(outgoing_arp_packet);
 
     return result;
 }
@@ -529,6 +555,11 @@ int sr_unit_test_6(sr_unit_test_shared_state_t *shared_state) {
             shared_state->if_b_name,
             0);
 
+    /* Cleanup */
+
+    sr_free_packet(incoming_tcp_packet);
+    sr_free_packet(outgoing_icmp_packet);
+
     return result;
 }
 
@@ -592,6 +623,11 @@ int sr_unit_test_7(sr_unit_test_shared_state_t *shared_state) {
             outgoing_icmp_packet->len,
             shared_state->if_b_name,
             0);
+
+    /* Cleanup */
+
+    sr_free_packet(incoming_icmp_packet);
+    sr_free_packet(outgoing_icmp_packet);
 
     return result;
 }
@@ -669,6 +705,11 @@ int sr_unit_test_8(sr_unit_test_shared_state_t *shared_state) {
             shared_state->if_b_name,
             0);
 
+    /* Cleanup */
+
+    sr_free_packet(incoming_tcp_packet);
+    sr_free_packet(outgoing_icmp_packet);
+
     return result;
 }
 
@@ -715,6 +756,10 @@ int sr_unit_test_9(sr_unit_test_shared_state_t *shared_state) {
             0,
             NULL,
             0);
+
+    /* Cleanup */
+
+    sr_free_packet(incoming_tcp_packet);
 
     return result;
 }
@@ -786,6 +831,11 @@ int sr_unit_test_10(sr_unit_test_shared_state_t *shared_state) {
             shared_state->if_b_name,
             0);
 
+    /* Cleanup */
+
+    sr_free_packet(incoming_tcp_packet);
+    sr_free_packet(outgoing_icmp_packet);
+
     return result;
 }
 
@@ -856,6 +906,11 @@ int sr_unit_test_11(sr_unit_test_shared_state_t *shared_state) {
             shared_state->if_b_name,
             5);
 
+    /* Cleanup */
+
+    sr_free_packet(incoming_tcp_packet);
+    sr_free_packet(outgoing_icmp_packet);
+
     return result;
 }
 
@@ -885,6 +940,10 @@ void sr_run_unit_tests(struct sr_instance* sr /* borrowed */)
     successful_tests += sr_unit_test_9(shared_state);
     successful_tests += sr_unit_test_10(shared_state);
     successful_tests += sr_unit_test_11(shared_state);
+
+    /* Clean up */
+
+    sr_free_unit_test_shared_state(shared_state);
 
     /* Output overall test results */
 
@@ -1111,9 +1170,8 @@ int sr_unit_test_packet(struct sr_instance* sr /* borrowed */,
                                     puts("FAILED\n" KWHT);
                                 }
                                 else {
-                                    /* This should be impossible to reach, unless something fishy happened at the general memcmp */
-                                    puts(KBLU "PASSED. IP headers match. *Note: this is a fishy way to pass the test, explore this*\n" KWHT);
-                                    return 1;
+                                    puts(KRED "FAILED. IP contents doesn't match. \n" KWHT);
+                                    return 0;
                                 }
                             }
 
