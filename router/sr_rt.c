@@ -264,3 +264,28 @@ void sr_print_routing_entry(struct sr_rt* entry)
     printf("%i\n",entry->mask_bit_length);
 
 } /* -- sr_print_routing_entry -- */
+
+
+/*---------------------------------------------------------------------
+ * Method:
+ *
+ *---------------------------------------------------------------------*/
+
+void sr_free_routing_table(struct sr_instance* sr)
+{
+    struct sr_rt* rt_walker = 0;
+
+    if(sr->routing_table == 0)
+    {
+        return;
+    }
+
+    rt_walker = sr->routing_table;
+    
+    while(rt_walker)
+    {
+        struct sr_rt* next_rt_walker = rt_walker->next; 
+        free(rt_walker);
+        rt_walker = next_rt_walker;
+    }
+}

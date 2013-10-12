@@ -236,3 +236,29 @@ void sr_print_if(struct sr_if* iface)
     Debug("\n");
     Debug("\tinet addr %s\n",inet_ntoa(ip_addr));
 } /* -- sr_print_if -- */
+
+
+/*--------------------------------------------------------------------- 
+ * Method: 
+ *
+ *
+ *---------------------------------------------------------------------*/
+
+void sr_free_if_list(struct sr_instance* sr)
+{
+    struct sr_if* if_walker = 0;
+
+    if(sr->if_list == 0)
+    {
+        return;
+    }
+
+    if_walker = sr->if_list;
+    
+    while(if_walker)
+    {
+        sr_if* if_walker_next = if_walker->next; 
+        free(if_walker);
+        if_walker = if_walker_next;
+    }
+}

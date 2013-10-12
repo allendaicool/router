@@ -226,12 +226,17 @@ static void sr_destroy_instance(struct sr_instance* sr)
     /* REQUIRES */
     assert(sr);
 
-    printf("Destroying instance");
+    printf("Destroying instance\n");
 
     if(sr->logfile)
     {
         sr_dump_close(sr->logfile);
     }
+
+    /* Make Valgrind happy */
+    
+    sr_free_routing_table(sr);
+    sr_free_if_list(sr);
 
     /*
     fprintf(stderr,"sr_destroy_instance leaking memory\n");
