@@ -146,6 +146,10 @@ void sr_handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
 
             sr_send_packet(sr,arp_packet->buf,arp_packet->len,req->packets->iface);
 
+            /* Cleanup our ARP req */
+
+            sr_free_packet(arp_packet);
+
             req->sent = now;
             req->times_sent++;
         }
