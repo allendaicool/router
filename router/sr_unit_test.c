@@ -82,10 +82,22 @@ int sr_mock_receive_packet(struct sr_instance* sr /* borrowed */,
  * Test 9: Receive an ETH packet with corrupted checksum. Drop it. Expect no
  * response.
  *
- * Test 10: ICMP packet destination has no forwarding table entry. ICMP host
+ * Test 10: ICMP ping packet destination has no forwarding table entry. ICMP host
  * unreachable response.
  *
  * Test 11: ARP request times out after 5 requests, ICMP unreachable sent out
+ *
+ * ---------- TODO ----------
+ *
+ * Test 12: Receive an ICMP unreachable out to an unreachable hose, don't respond.
+ *
+ * Test 13: Receive an IP header that's too short. Drop it.
+ *
+ * Test 14: Receive an ARP header that's too short. Drop it.
+ *
+ * Test 15: Receive an IP header with a corrupted checksum.
+ *
+ * Test 16: Receive an ARP header with a corrupted checksum.
  *
  *---------------------------------------------------------------------------*/
 

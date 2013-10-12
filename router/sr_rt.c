@@ -132,7 +132,7 @@ struct in_addr gw, struct in_addr mask,char* if_name)
 
     rt_walker->mask_bit_length = 0;
 
-    /* This is a bit of inline assembly on x86 processors that
+    /* There is a bit of inline assembly on x86 processors that
      * does a bit-scan from the end of the bit pattern to the front
      * and places the index of smallest 1 into match_length.
      * 

@@ -226,6 +226,8 @@ static void sr_destroy_instance(struct sr_instance* sr)
     /* REQUIRES */
     assert(sr);
 
+    printf("Destroying instance");
+
     if(sr->logfile)
     {
         sr_dump_close(sr->logfile);
