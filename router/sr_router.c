@@ -461,6 +461,7 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
             /* If they pass in an ip header, lets copy it over */
 
             if (ip_hdr != NULL) {
+                puts("Copying passed in IP header\n");
 
                 /* First, let's check that the ip they're sending from, if it's one of our interfaces,
                  * is changed to the correct outgoing interface. */
