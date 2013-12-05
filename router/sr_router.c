@@ -443,13 +443,12 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
 
         /* Check whether or not we're overriding the source of the packet */
 
+        temp_ip = ip_to_str(ip_src);
+        printf("Overriding src IP: %s\n",temp_ip);
+        free(temp_ip);
+
         if (ip_src == 0) {
             ip_src = gw_if->ip;
-        }
-        else {
-            char* temp_ip = ip_to_str(ip_src);
-            printf("Overriding src IP: %s\n",temp_ip);
-            free(temp_ip);
         }
 
         if (entry) {
