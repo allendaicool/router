@@ -329,6 +329,11 @@ void sr_handlepacket_ip(struct sr_instance* sr,
             case ip_protocol_tcp:
             case ip_protocol_udp:
                 puts("Received a TCP/UDP request.");
+
+                /* Undo changes to the TTL */
+
+                ip_hdr->ip_ttl++;
+                ip_hdr->ip_sum = cksum((const void*)ip_hdr, sizeof(sr_ip_hdr_t));
     
                 /* Send out a ICMP port unreachable response */
 
