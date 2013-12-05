@@ -400,12 +400,14 @@ void sr_handlepacket_icmp(struct sr_instance* sr,
              * from the same IP that was asked about the original
              * values */
 
+            icmp_hdr->icmp_type = ICMP_TYPE_ECHO_REPLY;
+            icmp_hdr->icmp_code = ICMP_CODE_ECHO_REPLY;
+            icmp_hdr->cksum = 0;
+            icmp_hdr->cksum = cksum((const void*)icmp_hdr,sizeof(sr_icmp_hdr_t));
+
             sr_try_send_ip_packet(sr, ip_hdr->ip_src, ip_hdr->ip_dst,
                 sr_build_icmp_packet(
-                    ICMP_TYPE_ECHO_REPLY,
-                    ICMP_CODE_ECHO_REPLY,
-                    icmp_hdr->icmp_identifier,
-                    icmp_hdr->icmp_seqno
+                    icmp_hdr
                 ),
                 NULL
             );
@@ -612,18 +614,11 @@ sr_constructed_packet_t *sr_build_ip_packet(uint32_t ip_src, uint32_t ip_dst, ui
 
 /* Creates an ICMP header, returning the packet to this point */
 
-sr_constructed_packet_t *sr_build_icmp_packet(uint8_t icmp_type, uint8_t icmp_code, uint16_t icmp_identifier, uint16_t icmp_seqno) {
+sr_constructed_packet_t *sr_build_icmp_packet(sr_icmp_hdr_t* icmp_hdr) {
 
     sr_constructed_packet_t* icmp_packet = sr_grow_or_create_payload(NULL, sizeof(sr_icmp_hdr_t));
 
-    sr_icmp_hdr_t* icmp_hdr = (sr_icmp_hdr_t*)(icmp_packet->buf);
-
-    icmp_hdr->icmp_type = icmp_type;
-    icmp_hdr->icmp_code = icmp_code;
-    icmp_hdr->icmp_identifier = icmp_identifier;
-    icmp_hdr->icmp_seqno = icmp_seqno;
-
-    icmp_hdr->icmp_sum = cksum((const void*)icmp_hdr,sizeof(sr_icmp_hdr_t));
+    memcpy(icmp_packet->buf,icmp_hdr,sizeof(sr_icmp_hdr_t));
 
     return icmp_packet;
 }
