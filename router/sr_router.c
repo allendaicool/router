@@ -402,8 +402,8 @@ void sr_handlepacket_icmp(struct sr_instance* sr,
 
             icmp_hdr->icmp_type = ICMP_TYPE_ECHO_REPLY;
             icmp_hdr->icmp_code = ICMP_CODE_ECHO_REPLY;
-            icmp_hdr->icmp_cksum = 0;
-            icmp_hdr->icmp_cksum = cksum((const void*)icmp_hdr,sizeof(sr_icmp_hdr_t));
+            icmp_hdr->icmp_sum = 0;
+            icmp_hdr->icmp_sum = cksum((const void*)icmp_hdr,sizeof(sr_icmp_hdr_t));
 
             sr_try_send_ip_packet(sr, ip_hdr->ip_src, ip_hdr->ip_dst,
                 sr_build_icmp_packet(
