@@ -623,7 +623,7 @@ sr_constructed_packet_t *sr_build_icmp_packet(uint8_t icmp_type, uint8_t icmp_co
     icmp_hdr->icmp_identifier = icmp_identifier;
     icmp_hdr->icmp_seqno = icmp_seqno;
 
-    icmp_hdr->icmp_sum = htons(cksum((const void*)icmp_hdr,4));
+    icmp_hdr->icmp_sum = htons(cksum((const void*)icmp_hdr,sizeof(sr_icmp_hdr_t)));
 
     return icmp_packet;
 }
