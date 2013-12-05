@@ -122,7 +122,7 @@ void sr_handlepacket_arp(struct sr_instance* sr,
         sr_ethernet_hdr_t* eth_hdr,
         uint8_t* packet/* not even a malloc pointer */,
         unsigned int len,
-        char* interface/* lent */) 
+        char* interface/* lent */)
 {
     puts("handling ARP header");
     sr_arp_hdr_t *arp_hdr;
@@ -461,6 +461,18 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
             /* If they pass in an ip header, lets copy it over */
 
             if (ip_hdr != NULL) {
+
+                /* First, let's check that the ip they're sending from, if it's one of our interfaces,
+                 * is changed to the correct outgoing interface. */
+
+                struct sr_if* if_dst = sr_get_interface_ip (sr, ntohl(ip_hdr->ip_dst));
+                if (if_dst != 0) {
+                    puts("Correcting src IP to the outgoing gateway's IP\n");
+                    ip_hdr->ip_dst = htonl(gw_if->ip);
+                }
+
+                /* Now let's copy it over */
+
                 sr_ip_hdr_t* ip_hdr_buf = (sr_ip_hdr_t*)(ip_packet->buf + sizeof(sr_ethernet_hdr_t));
                 memcpy(ip_hdr_buf, ip_hdr, sizeof(sr_ip_hdr_t));
             }
