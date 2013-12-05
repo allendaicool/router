@@ -546,8 +546,8 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
 
         sr_try_send_ip_packet(sr, ip_hdr->ip_src, ip_hdr->ip_dst,
             sr_build_icmp_t3_packet(
-                ICMP_TYPE_HOST_UNREACHABLE,
-                ICMP_CODE_HOST_UNREACHABLE,
+                ICMP_TYPE_NET_UNREACHABLE,
+                ICMP_CODE_NET_UNREACHABLE,
 
                 /* reconstruct the original IP packet */
 
