@@ -646,7 +646,7 @@ sr_constructed_packet_t *sr_build_icmp_t3_packet(uint8_t icmp_type, uint8_t icmp
 
     memcpy(icmp_hdr->data, trigger_packet, ICMP_DATA_SIZE);
 
-    icmp_hdr->icmp_sum = htons(cksum((const void*)icmp_hdr,sizeof(sr_icmp_t3_hdr_t)));
+    icmp_hdr->icmp_sum = cksum((const void*)icmp_hdr,sizeof(sr_icmp_t3_hdr_t));
 
     return icmp_packet;
 }
