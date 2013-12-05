@@ -79,6 +79,7 @@ struct sr_packet {
     sr_constructed_packet_t *payload; /* A payload, without IP or Ethernet wrappings */
     char *iface;                /* The outgoing interface */
     uint32_t ip_dst;            /* The outgoing IP destination */
+    uint32_t ip_src;            /* The IP src override */
 
     sr_ip_hdr_t *ip_hdr;
 
@@ -134,6 +135,7 @@ struct sr_arpentry *sr_arpcache_lookup(struct sr_arpcache *cache, uint32_t ip);
 struct sr_arpreq *sr_arpcache_queuereq(struct sr_arpcache *cache,
                                        uint32_t ip_gw,
                                        uint32_t ip_dst,
+                                       uint32_t ip_src,
                                        sr_constructed_packet_t *payload, /* A payload, without IP or Ethernet wrappings */
                                        sr_ip_hdr_t *ip_hdr,
                                        char *iface);

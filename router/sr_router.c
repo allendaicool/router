@@ -213,7 +213,7 @@ void sr_handlepacket_arp(struct sr_instance* sr,
 
                     /* Send the packet, which will do the lookup against the ARP table we just filled with the answer */
 
-                    sr_try_send_ip_packet(sr, packet_walker->ip_dst, 0, packet_walker->payload, packet_walker->ip_hdr);
+                    sr_try_send_ip_packet(sr, packet_walker->ip_dst, packet_walker->ip_src, packet_walker->payload, packet_walker->ip_hdr);
 
                     /* Remove the reference to the packet on this buffered request */
 
@@ -500,7 +500,7 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
 
             /* We don't free the payload, because it gets put directly into the queue */
 
-            struct sr_arpreq *req = sr_arpcache_queuereq(&sr->cache, rt_dst->gw.s_addr, ip_dst, payload, ip_hdr, rt_dst->interface);
+            struct sr_arpreq *req = sr_arpcache_queuereq(&sr->cache, rt_dst->gw.s_addr, ip_dst, ip_src, payload, ip_hdr, rt_dst->interface);
             sr_handle_arpreq(sr,req);
         }
 
