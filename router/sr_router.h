@@ -81,7 +81,7 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
 sr_constructed_packet_t *sr_build_eth_packet(uint8_t ether_shost[ETHER_ADDR_LEN], uint8_t ether_dhost[ETHER_ADDR_LEN], uint16_t ether_type, sr_constructed_packet_t* payload);
 sr_constructed_packet_t *sr_build_arp_packet(uint32_t ip_src, uint32_t ip_dst, uint8_t ether_shost[ETHER_ADDR_LEN], uint8_t ether_dhost[ETHER_ADDR_LEN], unsigned short ar_op, sr_constructed_packet_t* payload);
 sr_constructed_packet_t *sr_build_ip_packet(uint32_t ip_src, uint32_t ip_dst, uint8_t ip_p, sr_constructed_packet_t* payload);
-sr_constructed_packet_t *sr_build_icmp_packet(uint8_t icmp_type, uint8_t icmp_code, uint8_t* trigger_packet);
+sr_constructed_packet_t *sr_build_icmp_packet(uint8_t icmp_type, uint8_t icmp_code, uint16_t icmp_identifier, uint16_t icmp_seqno);
 sr_constructed_packet_t *sr_build_icmp_t3_packet(uint8_t icmp_type, uint8_t icmp_code, uint8_t* trigger_packet);
 sr_constructed_packet_t *sr_build_dummy_tcp_packet();
 

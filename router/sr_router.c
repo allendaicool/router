@@ -292,10 +292,10 @@ void sr_handlepacket_ip(struct sr_instance* sr,
         /* Send out a ICMP TTL expired response */
 
         sr_try_send_ip_packet(sr, ip_hdr->ip_src, 0,
-            sr_build_icmp_packet(
+            sr_build_icmp_t3_packet(
                 ICMP_TYPE_TTL_EXCEEDED,
                 ICMP_CODE_TTL_EXCEEDED,
-                packet
+                (uint8_t*)ip_hdr
             ),
             NULL
         );
@@ -404,7 +404,8 @@ void sr_handlepacket_icmp(struct sr_instance* sr,
                 sr_build_icmp_packet(
                     ICMP_TYPE_ECHO_REPLY,
                     ICMP_CODE_ECHO_REPLY,
-                    NULL
+                    icmp_hdr->icmp_identifier,
+                    icmp_hdr->icmp_seqno
                 ),
                 NULL
             );
@@ -611,18 +612,16 @@ sr_constructed_packet_t *sr_build_ip_packet(uint32_t ip_src, uint32_t ip_dst, ui
 
 /* Creates an ICMP header, returning the packet to this point */
 
-sr_constructed_packet_t *sr_build_icmp_packet(uint8_t icmp_type, uint8_t icmp_code, uint8_t* trigger_packet) {
+sr_constructed_packet_t *sr_build_icmp_packet(uint8_t icmp_type, uint8_t icmp_code, uint16_t icmp_identifier, uint16_t icmp_seqno) {
 
-    sr_constructed_packet_t* icmp_packet = sr_grow_or_create_payload(NULL, sizeof(sr_icmp_hdr_t) + 4 + ICMP_DATA_SIZE);
+    sr_constructed_packet_t* icmp_packet = sr_grow_or_create_payload(NULL, sizeof(sr_icmp_hdr_t));
 
     sr_icmp_hdr_t* icmp_hdr = (sr_icmp_hdr_t*)(icmp_packet->buf);
 
     icmp_hdr->icmp_type = icmp_type;
     icmp_hdr->icmp_code = icmp_code;
-
-    if (trigger_packet != NULL) {
-        memcpy(icmp_packet->buf + sizeof(sr_icmp_hdr_t) + 4, trigger_packet, ICMP_DATA_SIZE);
-    }
+    icmp_hdr->icmp_identifier = icmp_identifier;
+    icmp_hdr->icmp_seqno = icmp_seqno;
 
     icmp_hdr->icmp_sum = htons(cksum((const void*)icmp_hdr,sizeof(sr_icmp_hdr_t)));
 
