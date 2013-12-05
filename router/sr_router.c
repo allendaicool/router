@@ -458,6 +458,10 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
                 )
             );
 
+            char* temp_ip = ip_to_str(gw_if->ip);
+            printf("Forwarding IP packet from %s\n",temp_ip);
+            free(temp_ip);
+
             /* If they pass in an ip header, lets copy it over */
 
             if (ip_hdr != NULL) {
