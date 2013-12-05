@@ -74,6 +74,7 @@ void sr_handlepacket_icmp(struct sr_instance* sr, sr_ethernet_hdr_t* eth_hdr, sr
 
 void sr_try_send_ip_packet(struct sr_instance* sr,
         uint32_t ip_dst, /* network order */
+        uint32_t ip_src, /* optional value */
         sr_constructed_packet_t *payload,
         sr_ip_hdr_t *ip_hdr);
 

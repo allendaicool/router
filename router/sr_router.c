@@ -213,7 +213,7 @@ void sr_handlepacket_arp(struct sr_instance* sr,
 
                     /* Send the packet, which will do the lookup against the ARP table we just filled with the answer */
 
-                    sr_try_send_ip_packet(sr, packet_walker->ip_dst, packet_walker->payload, packet_walker->ip_hdr);
+                    sr_try_send_ip_packet(sr, packet_walker->ip_dst, 0, packet_walker->payload, packet_walker->ip_hdr);
 
                     /* Remove the reference to the packet on this buffered request */
 
@@ -291,7 +291,7 @@ void sr_handlepacket_ip(struct sr_instance* sr,
 
         /* Send out a ICMP TTL expired response */
 
-        sr_try_send_ip_packet(sr, ip_hdr->ip_src, 
+        sr_try_send_ip_packet(sr, ip_hdr->ip_src, 0,
             sr_build_icmp_packet(
                 ICMP_TYPE_TTL_EXCEEDED,
                 ICMP_CODE_TTL_EXCEEDED,
@@ -332,7 +332,7 @@ void sr_handlepacket_ip(struct sr_instance* sr,
     
                 /* Send out a ICMP port unreachable response */
 
-                sr_try_send_ip_packet(sr, ip_hdr->ip_src,
+                sr_try_send_ip_packet(sr, ip_hdr->ip_src, ip_hdr->ip_dst,
                     sr_build_icmp_t3_packet(
                         ICMP_TYPE_PORT_UNREACHABLE,
                         ICMP_CODE_PORT_UNREACHABLE,
@@ -358,7 +358,7 @@ void sr_handlepacket_ip(struct sr_instance* sr,
 
     /* Handles checking the routing table, and making any ARP requests we need to make */
 
-    sr_try_send_ip_packet(sr, ip_hdr->ip_dst, payload, ip_hdr);
+    sr_try_send_ip_packet(sr, ip_hdr->ip_dst, 0, payload, ip_hdr);
 }
 
 
@@ -396,9 +396,11 @@ void sr_handlepacket_icmp(struct sr_instance* sr,
 
             puts("Responding to ECHO request");
 
-            /* Send out a ICMP port unreachable response */
+            /* Send out a ICMP port unreachable response 
+             * from the same IP that was asked about the original
+             * values */
 
-            sr_try_send_ip_packet(sr, ip_hdr->ip_src,
+            sr_try_send_ip_packet(sr, ip_hdr->ip_src, ip_hdr->ip_dst,
                 sr_build_icmp_packet(
                     ICMP_TYPE_ECHO_REPLY,
                     ICMP_CODE_ECHO_REPLY,
@@ -415,6 +417,7 @@ void sr_handlepacket_icmp(struct sr_instance* sr,
 
 void sr_try_send_ip_packet(struct sr_instance* sr,
         uint32_t ip_dst, /* network order */
+        uint32_t ip_src, /* optional value - 0 to deactivate */
         sr_constructed_packet_t *payload,
         sr_ip_hdr_t *ip_hdr)
 {
@@ -438,6 +441,10 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
 
         struct sr_arpentry *entry = sr_arpcache_lookup(&(sr->cache), rt_dst->gw.s_addr);
 
+        /* Check whether or not we're overriding the source of the packet */
+
+        if (ip_src == 0) ip_src = gw_if->ip;
+
         if (entry) {
 
             puts("ARP cache entry exists.");
@@ -450,7 +457,7 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
                 ethertype_ip,
 
                 sr_build_ip_packet(
-                    gw_if->ip, /* src */
+                    ip_src, /* src */
                     ip_dst, /* dst */
                     ip_protocol_icmp,
 
@@ -458,23 +465,10 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
                 )
             );
 
-            char* temp_ip = ip_to_str(gw_if->ip);
-            printf("Forwarding IP packet from %s\n",temp_ip);
-            free(temp_ip);
-
             /* If they pass in an ip header, lets copy it over */
 
             if (ip_hdr != NULL) {
                 puts("Copying passed in IP header\n");
-
-                /* First, let's check that the ip they're sending from, if it's one of our interfaces,
-                 * is changed to the correct outgoing interface. */
-
-                struct sr_if* if_dst = sr_get_interface_ip (sr, ntohl(ip_hdr->ip_dst));
-                if (if_dst != 0) {
-                    puts("Correcting src IP to the outgoing gateway's IP\n");
-                    ip_hdr->ip_dst = htonl(gw_if->ip);
-                }
 
                 /* Now let's copy it over */
 
@@ -536,7 +530,7 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
 
         /* Recurse to send this packet back */
 
-        sr_try_send_ip_packet(sr, ip_hdr->ip_src, 
+        sr_try_send_ip_packet(sr, ip_hdr->ip_src, ip_hdr->ip_dst,
             sr_build_icmp_t3_packet(
                 ICMP_TYPE_HOST_UNREACHABLE,
                 ICMP_CODE_HOST_UNREACHABLE,
