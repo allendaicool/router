@@ -81,6 +81,7 @@ void sr_handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req) {
 
                     sr_try_send_ip_packet(sr,
                         packet_walker->ip_hdr->ip_src, /* network order */
+                        0,
                         sr_build_icmp_t3_packet(
                             ICMP_TYPE_HOST_UNREACHABLE,
                             ICMP_CODE_HOST_UNREACHABLE,
