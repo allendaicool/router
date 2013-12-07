@@ -109,6 +109,7 @@ int main(int argc, char **argv)
                 template = optarg;
                 break;
             case 'n':
+                puts("INITIALIZING THE NAT\n");
                 use_nat = 1;
                 break;
         } /* switch */
