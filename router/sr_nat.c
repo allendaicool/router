@@ -97,7 +97,7 @@ void sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int le
 
     char* src_str = ip_to_str(ntohl(ip_hdr->ip_src));
     char* dst_str = ip_to_str(ntohl(ip_hdr->ip_dst));
-    printf("\nNAT REWRITING IP PACKET!\nSRC LOC: ");
+    printf("\nNAT REWRITING IP PACKET!\nSRC LOC (%s): ",src_str);
     switch (src_loc) {
         case external_interface:
             printf("External Interface");
@@ -112,7 +112,7 @@ void sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int le
             printf("No Interface");
             break;
     }
-    printf("\nDST LOC: ");
+    printf("\nDST LOC (%s): ",dst_str);
     switch (dst_loc) {
         case external_interface:
             printf("External Interface");
