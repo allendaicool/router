@@ -92,8 +92,8 @@ void sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int le
 
     /* Check if we're traversing the interface, and if so, which direction */
 
-    sr_network_location src_loc = sr_get_ip_network_location(sr, ntohl(ip_hdr->ip_src));
-    sr_network_location dst_loc = sr_get_ip_network_location(sr, ntohl(ip_hdr->ip_dst));
+    sr_network_location src_loc = sr_get_ip_network_location(sr, ip_hdr->ip_src);
+    sr_network_location dst_loc = sr_get_ip_network_location(sr, ip_hdr->ip_dst);
 
     char* src_str = ip_to_str(ntohl(ip_hdr->ip_src));
     char* dst_str = ip_to_str(ntohl(ip_hdr->ip_dst));
