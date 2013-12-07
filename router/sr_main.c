@@ -72,6 +72,7 @@ int main(int argc, char **argv)
     unsigned int topo = DEFAULT_TOPO;
     char *logfile = 0;
     struct sr_instance sr;
+    int use_nat = 0;
 
     printf("Using %s\n", VERSION_INFO);
 
@@ -106,6 +107,9 @@ int main(int argc, char **argv)
                 break;
             case 'T':
                 template = optarg;
+                break;
+            case 'n':
+                use_nat = 1;
                 break;
         } /* switch */
     } /* -- while -- */
@@ -161,6 +165,8 @@ int main(int argc, char **argv)
       /* Read from specified routing table */
       sr_load_rt_wrap(&sr, rtable);
     }
+
+    sr.use_nat = use_nat;
 
     /* call router init (for arp subsystem etc.) */
     sr_init(&sr);

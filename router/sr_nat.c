@@ -3,6 +3,7 @@
 #include <assert.h>
 #include "sr_nat.h"
 #include <unistd.h>
+#include <stdio.h>
 
 int sr_nat_init(struct sr_nat *nat) { /* Initializes the nat */
 
@@ -40,6 +41,10 @@ int sr_nat_destroy(struct sr_nat *nat) {  /* Destroys the nat (free memory) */
   return pthread_mutex_destroy(&(nat->lock)) &&
     pthread_mutexattr_destroy(&(nat->attr));
 
+}
+
+void sr_nat_rewrite_ip_packet(struct sr_nat* nat, uint8_t* packet, unsigned int len) {
+    puts("NAT REWRITING IP PACKET!\n");
 }
 
 void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */

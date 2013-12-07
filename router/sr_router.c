@@ -40,6 +40,11 @@ void sr_init(struct sr_instance* sr)
     /* Initialize cache and cache cleanup thread */
     sr_arpcache_init(&(sr->cache));
 
+    /* If we're using a NAT, then initialize it */
+    if (sr->use_nat) {
+        sr_nat_init(&(sr->nat));
+    }
+
     pthread_attr_init(&(sr->attr));
     pthread_attr_setdetachstate(&(sr->attr), PTHREAD_CREATE_JOINABLE);
     pthread_attr_setscope(&(sr->attr), PTHREAD_SCOPE_SYSTEM);
@@ -260,6 +265,14 @@ void sr_handlepacket_ip(struct sr_instance* sr,
     if (len < sizeof(sr_ip_hdr_t)) {
         puts("Ethernet payload (claiming to contain IP) is smaller than IP header. Discarding.");
         return;
+    }
+
+    /* If we're using a NAT, then the rewrite of IP packets is
+     * absolutely the first thing we do. That way the rest of
+     * the router still feels like everything is the same. This
+     * is the only change to the router to get a NAT working. */
+    if (sr->use_nat) {
+        sr_nat_rewrite_ip_packet(&(sr->nat), packet, len);
     }
 
     ip_hdr = (sr_ip_hdr_t*)packet;

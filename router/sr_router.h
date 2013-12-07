@@ -13,6 +13,7 @@
 #include <sys/time.h>
 #include <stdio.h>
 
+#include "sr_nat.h"
 #include "sr_protocol.h"
 #include "sr_arpcache.h"
 #include "sr_packet.h"
@@ -53,6 +54,8 @@ struct sr_instance
     struct sr_if* if_list; /* list of interfaces */
     struct sr_rt* routing_table; /* routing table */
     struct sr_arpcache cache;   /* ARP cache */
+    int use_nat;
+    struct sr_nat nat; /* NAT system */
     pthread_attr_t attr;
     FILE* logfile;
 };
