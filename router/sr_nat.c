@@ -5,6 +5,7 @@
 #include "sr_router.h"
 #include "sr_protocol.h"
 #include "sr_rt.h"
+#include "sr_utils.h"
 #include <unistd.h>
 #include <stdio.h>
 
@@ -94,6 +95,8 @@ void sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int le
     sr_network_location src_loc = sr_get_ip_network_location(sr, ntohl(ip_hdr->ip_src));
     sr_network_location dst_loc = sr_get_ip_network_location(sr, ntohl(ip_hdr->ip_dst));
 
+    char* src_str = ip_to_str(ntohl(ip_hdr->ip_src));
+    char* dst_str = ip_to_str(ntohl(ip_hdr->ip_dst));
     printf("\nNAT REWRITING IP PACKET!\nSRC LOC: ");
     switch (src_loc) {
         case external_interface:
@@ -125,6 +128,8 @@ void sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int le
             break;
     }
     printf("\n");
+    free(src_str);
+    free(dst_str);
 
     /* Fork based on the type of packet */
 
