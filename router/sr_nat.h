@@ -65,8 +65,8 @@ int   sr_nat_init(struct sr_nat *nat);     /* Initializes the nat */
 int   sr_nat_destroy(struct sr_nat *nat);  /* Destroys the nat (free memory) */
 void *sr_nat_timeout(void *nat_ptr);  /* Periodic Timout */
 
-/* Rewrite the IP packet */
-void sr_nat_rewrite_ip_packet(struct sr_nat* nat, uint8_t* packet, unsigned int len);
+/* Rewrite the IP packet. I use a void* to avoid a cyclic import dependency. */
+void sr_nat_rewrite_ip_packet(void* sr, uint8_t* packet, unsigned int len);
 
 /* Get the mapping associated with given external port.
    You must free the returned structure if it is not NULL. */

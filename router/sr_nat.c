@@ -2,6 +2,9 @@
 #include <signal.h>
 #include <assert.h>
 #include "sr_nat.h"
+#include "sr_router.h"
+#include "sr_protocol.h"
+#include "sr_rt.h"
 #include <unistd.h>
 #include <stdio.h>
 
@@ -43,8 +46,102 @@ int sr_nat_destroy(struct sr_nat *nat) {  /* Destroys the nat (free memory) */
 
 }
 
-void sr_nat_rewrite_ip_packet(struct sr_nat* nat, uint8_t* packet, unsigned int len) {
-    puts("NAT REWRITING IP PACKET!\n");
+/* A quick enum to transmit the relative location of IP addresses */
+
+typedef enum {
+    external_interface,
+    my_interface,
+    internal_interface,
+    no_interface,
+} sr_network_location;
+
+/* Finds out where an IP address is located, relative to the NAT */
+
+sr_network_location sr_get_ip_network_location(struct sr_instance* sr, uint32_t ip) {
+
+    /* Check if the packet is headed for one of our interfaces */
+
+    struct sr_if* if_dst = sr_get_interface_ip (sr, ip);
+    if (if_dst != 0) return my_interface;
+
+    /* If it's not, then check if its LPM is "eth1" */
+
+    struct sr_rt* rt_dst = sr_rt_longest_match(sr,ip);
+    if (rt_dst != 0) {
+        if (strncmp(rt_dst->interface,"eth1",4) == 0) return internal_interface;
+        else return external_interface;
+    }
+
+    /* If we didn't find an LPM, this isn't in the routing table */
+
+    return no_interface;
+}
+
+/* Rewrites an IP packet in memory according to NAT rules */
+
+void sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int len) {
+    assert(sr_pointer);
+    assert(packet);
+
+    struct sr_instance* sr = (struct sr_instance*)sr_pointer;
+    
+    /* We know the IP header is valid, cause the router checked for us */
+
+    sr_ip_hdr_t *ip_hdr = (sr_ip_hdr_t*)packet;
+
+    /* Check if we're traversing the interface, and if so, which direction */
+
+    sr_network_location src_loc = sr_get_ip_network_location(sr, ntohl(ip_hdr->ip_src));
+    sr_network_location dst_loc = sr_get_ip_network_location(sr, ntohl(ip_hdr->ip_dst));
+
+    printf("\nNAT REWRITING IP PACKET!\nSRC LOC: ");
+    switch (src_loc) {
+        case external_interface:
+            printf("External Interface");
+            break;
+        case my_interface:
+            printf("My Interface");
+            break;
+        case internal_interface:
+            printf("Internal Interface");
+            break;
+        case no_interface:
+            printf("No Interface");
+            break;
+    }
+    printf("\nDST LOC: ");
+    switch (dst_loc) {
+        case external_interface:
+            printf("External Interface");
+            break;
+        case my_interface:
+            printf("My Interface");
+            break;
+        case internal_interface:
+            printf("Internal Interface");
+            break;
+        case no_interface:
+            printf("No Interface");
+            break;
+    }
+    printf("\n");
+
+    /* Fork based on the type of packet */
+
+    switch (ip_hdr->ip_p) {
+        case ip_protocol_icmp:
+            return;
+        case ip_protocol_tcp:
+            return;
+    }
+
+    /* Ignore all others */
+}
+
+void sr_nat_rewrite_icmp_packet(struct sr_instance* sr, uint8_t* packet, unsigned int len) {
+}
+
+void sr_nat_rewrite_tcp_packet(struct sr_instance* sr, uint8_t* packet, unsigned int len) {
 }
 
 void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
