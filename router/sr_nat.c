@@ -276,7 +276,8 @@ int sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int len
         case ip_protocol_tcp:
         {
             sr_tcp_hdr_t *tcp = (sr_tcp_hdr_t*)(packet+sizeof(sr_ip_hdr_t));
-            aux_value = tcp->src_port;
+            if (dir == incoming_pkt) aux_value = tcp->dst_port;
+            else if (dir == outgoing_pkt) aux_value = tcp->src_port;
             mapping_type = nat_mapping_tcp;
             break;
         }
