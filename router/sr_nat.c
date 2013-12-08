@@ -332,11 +332,11 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
     if (dir == outgoing_pkt) {
         if (!conn->seen_internal_syn && (tcp_hdr->flags & TCP_SYN_FLAG)) {
             conn->seen_internal_syn = tcp_hdr->seqno;
-            puts("SAW INTERNAL SYN %i\n",ntohs(tcp_hdr->seqno));
+            printf("SAW INTERNAL SYN %i\n",ntohs(tcp_hdr->seqno));
         }
         if (!conn->seen_internal_fin && (tcp_hdr->flags & TCP_FIN_FLAG)) {
             conn->seen_internal_fin = tcp_hdr->seqno;
-            puts("SAW INTERNAL FIN %i\n",ntohs(tcp_hdr->seqno));
+            printf("SAW INTERNAL FIN %i\n",ntohs(tcp_hdr->seqno));
         }
         if (conn->seen_external_fin) {
             printf("Checking ackno (%i) > external fin seqno (%i)\n",ntohs(tcp_hdr->ackno),ntohs(conn->seen_external_fin));
