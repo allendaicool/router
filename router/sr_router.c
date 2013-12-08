@@ -82,10 +82,10 @@ void sr_handlepacket(struct sr_instance* sr,
     assert(packet);
     assert(interface);
 
-    printf("*** -> Received packet of length %d \n",len);
+    /* printf("*** -> Received packet of length %d \n",len); */
 
     if (len < sizeof(sr_ethernet_hdr_t)) {
-        puts("Packet is smaller than an ethernet header. Discarding.");
+        /* /* puts("Packet is smaller than an ethernet header. Discarding."); */ */
         return;
     }
 
@@ -130,21 +130,21 @@ void sr_handlepacket_arp(struct sr_instance* sr,
         unsigned int len,
         char* interface/* lent */)
 {
-    puts("handling ARP header");
+    /* /* puts("handling ARP header"); */ */
     sr_arp_hdr_t *arp_hdr;
 
     /* REQUIRES */
     assert(packet);
 
     if (len < sizeof(sr_arp_hdr_t)) {
-        puts("Ethernet payload (claiming to contain ARP) is smaller than ARP header. Discarding.");
+        /* /* puts("Ethernet payload (claiming to contain ARP) is smaller than ARP header. Discarding."); */ */
         return;
     }
 
     arp_hdr = (sr_arp_hdr_t*)packet;
 
     char* temp_ip = ip_to_str(arp_hdr->ar_sip);
-    printf("from (network order) %s\n",temp_ip);
+    /* printf("from (network order) %s\n",temp_ip); */
     free(temp_ip);
 
     /* Endianness */
@@ -157,7 +157,7 @@ void sr_handlepacket_arp(struct sr_instance* sr,
          */
 
         case arp_op_request:
-            puts("received ARP OP request.");
+            /* /* puts("received ARP OP request."); */ */
 
             /* The VNS transport layer shouldn't allow any ARP packets that aren't for our
              * interface, but it's still worth checking, just in case something goes wrong
@@ -191,11 +191,11 @@ void sr_handlepacket_arp(struct sr_instance* sr,
 
                 /* Send the modified packet back out */
 
-                puts("sending ARP OP reply");
+                /* puts("sending ARP OP reply"); */
                 sr_send_packet(sr, (uint8_t*)eth_hdr, len + sizeof(sr_ethernet_hdr_t), interface);
             }
             else {
-                puts("ARP request received that's not for us.");
+                /* puts("ARP request received that's not for us."); */
             }
 
             break;
@@ -205,7 +205,7 @@ void sr_handlepacket_arp(struct sr_instance* sr,
          */
 
         case arp_op_reply:
-            puts("received ARP OP reply.");
+            /* puts("received ARP OP reply."); */
 
             /* Insert the new IP->MAC mapping into the cache, using network endianness for IP */
 
@@ -235,7 +235,7 @@ void sr_handlepacket_arp(struct sr_instance* sr,
                 sr_arpreq_destroy(&(sr->cache),req);
             }
             else {
-                puts("no cached requests waiting on this ARP.");
+                /* puts("no cached requests waiting on this ARP."); */
             }
             break;
     }
@@ -256,7 +256,7 @@ void sr_handlepacket_ip(struct sr_instance* sr,
         unsigned int len,
         char* interface/* lent */) 
 {
-    puts("handling IP header");
+    /* puts("handling IP header"); */
     sr_ip_hdr_t *ip_hdr;
     struct sr_if* if_dst;
 
@@ -264,7 +264,7 @@ void sr_handlepacket_ip(struct sr_instance* sr,
     assert(packet);
 
     if (len < sizeof(sr_ip_hdr_t)) {
-        puts("Ethernet payload (claiming to contain IP) is smaller than IP header. Discarding.");
+        /* puts("Ethernet payload (claiming to contain IP) is smaller than IP header. Discarding."); */
         return;
     }
 
@@ -275,7 +275,7 @@ void sr_handlepacket_ip(struct sr_instance* sr,
     if (sr->use_nat) {
         int drop_requested = sr_nat_rewrite_ip_packet(sr, packet, len);
         if (drop_requested) {
-            puts("DROP requested by the NAT. Dropping packet.");
+            /* puts("DROP requested by the NAT. Dropping packet."); */
             return;
         }
     }
@@ -291,13 +291,13 @@ void sr_handlepacket_ip(struct sr_instance* sr,
     ip_hdr->ip_sum = 0;
 
     if (cksum((const void*)ip_hdr, sizeof(sr_ip_hdr_t)) != cksum_buffer) {
-        puts("Checksum is corrupted. Bailing");
+        /* puts("Checksum is corrupted. Bailing"); */
         return;
     }
 
     /* Decrement time to live */
 
-    printf("TTL: %i\n", ip_hdr->ip_ttl);
+    /* printf("TTL: %i\n", ip_hdr->ip_ttl); */
 
     /* Recalculate the cksum after changing the TTL */
 
@@ -305,7 +305,7 @@ void sr_handlepacket_ip(struct sr_instance* sr,
     ip_hdr->ip_sum = cksum((const void*)ip_hdr, sizeof(sr_ip_hdr_t));
 
     if (ip_hdr->ip_ttl <= 0) {
-        puts("Packet TTL expired");
+        /* puts("Packet TTL expired"); */
 
         /* Send out a ICMP TTL expired response */
 
@@ -326,7 +326,7 @@ void sr_handlepacket_ip(struct sr_instance* sr,
     if_dst = sr_get_interface_ip (sr, ntohl(ip_dst));
     if (if_dst != 0) {
 
-        puts("IP packet is destined for our interfaces.");
+        /* puts("IP packet is destined for our interfaces."); */
 
         /* If this IP packet is destined for us */
 
@@ -346,7 +346,7 @@ void sr_handlepacket_ip(struct sr_instance* sr,
 
             case ip_protocol_tcp:
             case ip_protocol_udp:
-                puts("Received a TCP/UDP request.");
+                /* puts("Received a TCP/UDP request."); */
 
                 /* Undo changes to the TTL */
 
@@ -367,7 +367,7 @@ void sr_handlepacket_ip(struct sr_instance* sr,
                 return;
         }
 
-        puts("IP packet protocol unsupported. Dropping packet.");
+        /* puts("IP packet protocol unsupported. Dropping packet."); */
         return;
     }
 
@@ -400,7 +400,7 @@ void sr_handlepacket_icmp(struct sr_instance* sr,
         unsigned int len,
         char* interface/* lent */) 
 {
-    puts("handling ICMP header");
+    /* puts("handling ICMP header"); */
     sr_icmp_hdr_t *icmp_hdr;
 
     /* REQUIRES */
@@ -409,15 +409,15 @@ void sr_handlepacket_icmp(struct sr_instance* sr,
     icmp_hdr = (sr_icmp_hdr_t*)packet;
 
     if (len < sizeof(sr_icmp_hdr_t)) {
-        puts("IP payload (claiming to contain ICMP) is smaller than ICMP header. Discarding.");
+        /* puts("IP payload (claiming to contain ICMP) is smaller than ICMP header. Discarding."); */
         return;
     }
     else {
-        puts("Got ICMP header");
+        /* puts("Got ICMP header"); */
 
         if (icmp_hdr->icmp_type == ICMP_TYPE_ECHO_MESSAGE && icmp_hdr->icmp_code == ICMP_CODE_ECHO_MESSAGE) {
 
-            puts("Responding to ECHO request");
+            /* puts("Responding to ECHO request"); */
 
             /* Send out a ICMP port unreachable response 
              * from the same IP that was asked about the original
@@ -470,7 +470,7 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
         /* Check whether or not we're overriding the source of the packet */
 
         temp_ip = ip_to_str(ip_src);
-        printf("Overriding src IP: %s\n",temp_ip);
+        /*printf("Overriding src IP: %s\n",temp_ip);*/
         free(temp_ip);
 
         if (ip_src == 0) {
@@ -479,7 +479,7 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
 
         if (entry) {
 
-            puts("ARP cache entry exists.");
+            /* puts("ARP cache entry exists."); */
 
             /* use next_hop_ip->mac mapping in entry to send the packet */
             
@@ -500,7 +500,7 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
             /* If they pass in an ip header, lets copy it over */
 
             if (ip_hdr != NULL) {
-                puts("Copying passed in IP header\n");
+                /* puts("Copying passed in IP header\n"); */
 
                 /* Now let's copy it over */
 
@@ -519,7 +519,7 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
         }
         else {
 
-            puts("ARP cache entry doesn't exist. Queuing the packet contents.");
+            /* puts("ARP cache entry doesn't exist. Queuing the packet contents."); */
 
             /* We don't free the payload, because it gets put directly into the queue */
 
@@ -534,14 +534,14 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
      * Thus, it's time for some ICMP, if we were trying to send an IP request.
      */
 
-    puts("Nothing in the forwarding table for the destination IP.");
+    /* puts("Nothing in the forwarding table for the destination IP."); */
 
     /* If ip_hdr == NULL, then we were sending this packet out, and there's no reason to
      * respond to ourselves with an ICMP host unreachable error.
      */
 
     if (ip_hdr != NULL) {
-        puts("Was an IP packet (as expected). Checking if its an ICMP error, which we'll drop.");
+        /* puts("Was an IP packet (as expected). Checking if its an ICMP error, which we'll drop."); */
 
         /* Free the payload we won't be using */
 
@@ -550,15 +550,15 @@ void sr_try_send_ip_packet(struct sr_instance* sr,
         if (ip_hdr->ip_p == ip_protocol_icmp) {
             sr_icmp_hdr_t* icmp_hdr = (sr_icmp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
             if (icmp_hdr->icmp_type == 3) { /* Don't foward anything with type 3 */
-                puts("Was an ICMP error. Dropping.");
+                /* puts("Was an ICMP error. Dropping."); */
                 return;
             }
         }
         else {
-            puts("Wasn't ICMP.");
+            /* puts("Wasn't ICMP."); */
         }
 
-        puts("Wasn't an ICMP error.");
+        /* puts("Wasn't an ICMP error."); */
 
         /* Recurse to send this packet back */
 
