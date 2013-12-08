@@ -254,7 +254,7 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
         if (dir == outgoing_pkt) {
             char* temp_mapping = ip_to_str(mapping->ip_int);
             char* temp_test = ip_to_str(ip_hdr->ip_src);
-            printf("Mapping (%i, %s), Observed (%i, %s).\n",ntohs(mapping->aux_int),temp_mapping,ntohs(aux_int),temp_test);
+            printf("Mapping (%i, %s), Observed (%i, %s).\n",ntohs(mapping->aux_int),temp_mapping,ntohs(tcp_hdr->src_port),temp_test);
             free(temp_mapping);
             free(temp_test);
 
