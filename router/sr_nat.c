@@ -104,6 +104,28 @@ sr_traversal_direction sr_get_traversal_direction(sr_network_location src, sr_ne
     return not_traversing;
 }
 
+uint16_t cksum_tcp(sr_ip_hdr_t* ip_hdr, sr_tcp_hdr_t* tcp_hdr, unsigned int len) {
+
+    tcp_hdr->cksum = 0;
+    void* blob = malloc(sizeof(sr_tcp_psuedo_hdr_t)+len);
+    memcpy(blob,tcp_hdr,len);
+
+    /* Create the psuedo header */
+
+    sr_tcp_psuedo_hdr_t *psuedo = (sr_tcp_psuedo_hdr_t*)blob;
+    memset(psuedo,0,sizeof(sr_tcp_psuedo_hdr_t));
+    psuedo->ip_src = ip_hdr->ip_src;
+    psuedo->ip_src = ip_hdr->ip_src;
+    psuedo->ip_tos = ip_hdr->ip_tos;
+    psuedo->tcp_len = len;
+
+    /* Calculate the cksum */
+
+    uint16_t cksum_val = cksum(blob,sizeof(sr_tcp_psuedo_hdr_t)+len);
+    free(blob);
+    return cksum_val;
+}
+
 /* Rewrite a packet with a given mapping, heading in a given direction */
 
 void sr_rewrite_packet(struct sr_instance* sr, sr_ip_hdr_t* ip_hdr, unsigned int len, struct sr_nat_mapping* mapping, sr_traversal_direction dir) {
@@ -145,8 +167,7 @@ void sr_rewrite_packet(struct sr_instance* sr, sr_ip_hdr_t* ip_hdr, unsigned int
         {
             sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
             tcp_hdr->src_port = aux_value;
-            tcp_hdr->cksum = 0;
-            tcp_hdr->cksum = cksum(tcp_hdr,len-sizeof(sr_ip_hdr_t));
+            tcp_hdr->cksum = cksum_tcp(ip_hdr,tcp_hdr,len-sizeof(sr_ip_hdr_t));
             break;
         }
     }
@@ -270,14 +291,14 @@ int sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int len
     switch (dir) {
         case incoming_pkt:
         {
-            puts("Packing incoming through NAT\n");
+            puts("Packet incoming through NAT\n");
             if (unsupported_protocol) return REQUEST_DROP;
             mapping = sr_nat_lookup_external(&sr->nat, aux_value, mapping_type);
             break;
         }
         case outgoing_pkt:
         {
-            puts("Packing outgoing through NAT\n");
+            puts("Packet outgoing through NAT\n");
             if (unsupported_protocol) return REQUEST_DROP;
             mapping = sr_nat_lookup_internal(&sr->nat, aux_value, ip_hdr->ip_src, mapping_type);
             break;
