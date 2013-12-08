@@ -180,12 +180,6 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
             mapping->aux_ext = htons(sr->nat.aux_val);
             mapping->last_updated = time(NULL);
 
-            /* Create the connection we'll be using to keep track of the TCP flow */
-            if (mapping_type == nat_mapping_tcp) {
-                mapping->conns = malloc(sizeof(struct sr_nat_connection));
-                memset(mapping->conns,0,sizeof(struct sr_nat_connection)); /* Zero out */
-            }
-
             /* Generate a new aux value for the next mapping */
             sr->nat.aux_val = (sr->nat.aux_val + 1)%65535;
             if (sr->nat.aux_val < 1024) sr->nat.aux_val = 1024;
