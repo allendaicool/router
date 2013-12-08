@@ -289,17 +289,23 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
         port_dst = tcp_hdr->dst_port;
     }
 
+    printf("Looking up connection mapping\n");
     struct sr_nat_connection *conn = mapping->conns;    
+    char* temp_test = ip_to_str(ip_dst);
     while (conn != NULL) {
+        char* temp_mapping = ip_to_str(conn->ip_dst);
+        printf("Connection mapping (%i, %s), Observed (%i, %s).\n",ntohs(conn->port_dst),temp_mapping,ntohs(port_dst),temp_test);
         if (conn->ip_dst == ip_dst && conn->port_dst == port_dst) {
             break;
         }
         conn = conn->next;
     }
+    free(temp_test);
 
     /* Create a connection if there isn't one already */
 
     if (conn == NULL) {
+        printf("Didn't find a connection, so we're creating a new one");
         conn = malloc(sizeof(struct sr_nat_connection));
         memset(conn,0,sizeof(struct sr_nat_connection));
         conn->ip_dst = ip_dst;
