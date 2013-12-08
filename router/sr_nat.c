@@ -393,11 +393,18 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
 
   struct sr_nat_mapping *mapping_walker = nat->mappings;
   while (mapping_walker != NULL) {
+      char* temp_mapping = ip_to_str(mapping_walker->ip_int);
+      char* temp_test = ip_to_str(ip_int);
+
+      printf("Checking mapping with (%i, %s) for (%i, %s) observed.\n",mapping_walker->aux_ext,temp_mapping,aux_ext,temp_test);
       if (mapping_walker->aux_int == aux_int && mapping_walker->ip_int == ip_int) {
           copy = memdup(mapping_walker,sizeof(struct sr_nat_mapping));
           break;
       }
       mapping_walker = mapping_walker->next;
+
+      free(temp_mapping);
+      free(temp_test);
   }
 
   pthread_mutex_unlock(&(nat->lock));
