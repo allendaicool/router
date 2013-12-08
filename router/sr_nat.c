@@ -237,17 +237,20 @@ int sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int len
     switch (dir) {
         case incoming_pkt:
             {
+                puts("Packing incoming through NAT\n");
                 if (unsupported_protocol) return REQUEST_DROP;
                 mapping = sr_nat_lookup_external(&sr->nat, aux_value, mapping_type);
                 break;
             }
         case outgoing_pkt:
             {
+                puts("Packing outgoing through NAT\n");
                 if (unsupported_protocol) return REQUEST_DROP;
                 mapping = sr_nat_lookup_internal(&sr->nat, aux_value, ip_hdr->ip_src, mapping_type);
                 break;
             }
         case not_traversing:
+            puts("Packet not traversing NAT\n");
             /* We can safely allow any non-traversing packets to pass
              * unmolested */
             return DONT_REQUEST_DROP;
