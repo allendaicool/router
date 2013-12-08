@@ -195,7 +195,7 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
             mapping->ip_int = ip_hdr->ip_src;
             mapping->aux_int = aux_value;
             mapping->ip_ext = ip_hdr->ip_dst;
-            mapping->aux_ext = sr->nat.aux_val;
+            mapping->aux_ext = htons(sr->nat.aux_val);
             mapping->last_updated = time(NULL);
 
             /* Create the connection we'll be using to keep track of the TCP flow */
@@ -386,6 +386,7 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
 
   struct sr_nat_mapping *mapping_walker = nat->mappings;
   while (mapping_walker != NULL) {
+      printf("Checking mapping with aux_int %i, for %i observed.\n",mapping_walker->aux_int,aux_int);
       if (mapping_walker->aux_int == aux_int && mapping_walker->ip_int == ip_int) {
           copy = memdup(mapping_walker,sizeof(struct sr_nat_mapping));
           break;
