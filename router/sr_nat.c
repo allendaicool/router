@@ -244,6 +244,7 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
     /* Find the actual mapping for this value */
 
     struct sr_nat_mapping *mapping = sr->nat.mappings;
+    printf("Looking up mapping for TCP connection modification\n");
     while (mapping != NULL) {
         if (dir == incoming_pkt) {
             printf("Mapping (%i), Observed (%i).\n",ntohs(mapping->aux_ext),ntohs(tcp_hdr->dst_port));
@@ -251,16 +252,19 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
                 break;
             }
         }
-        if (dir == outgoing_pkt) {
+        else if (dir == outgoing_pkt) {
             char* temp_mapping = ip_to_str(mapping->ip_int);
             char* temp_test = ip_to_str(ip_hdr->ip_src);
-            printf("Mapping (%i, %s), Observed (%i, %s).\n",ntohs(mapping->aux_int),temp_mapping,ntohs(tcp_hdr->src_port),temp_test);
+            printf("Mapping (%i, %s), Observed (%i, %s).\n",ntohs(mapping->aux_int),temp_mapping,ntohs(aux_int),temp_test);
             free(temp_mapping);
             free(temp_test);
 
-            if (ip_hdr->ip_src == mapping->ip_int && tcp_hdr->src_port == mapping->aux_int) {
+            if ((ip_hdr->ip_src == mapping->ip_int) && (tcp_hdr->src_port == mapping->aux_int)) {
                 break;
             }
+        }
+        else {
+            printf("Packet direction is impossible value\n");
         }
         mapping = mapping->next;
     }
