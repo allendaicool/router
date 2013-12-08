@@ -129,7 +129,17 @@ struct sr_icmp_t3_hdr {
 typedef struct sr_icmp_t3_hdr sr_icmp_t3_hdr_t;
 
 
-
+struct sr_tcp_hdr {
+    uint16_t src_port;
+    uint16_t dst_port;
+    uint32_t seqno;
+    uint32_t ackno;
+    uint16_t unused; /* A whole bunch of flags etc */
+    uint16_t window_size;
+    uint16_t cksum;
+    uint16_t urgent_ptr;
+} __attribute__ ((packed)) ;
+typedef struct sr_tcp_hdr sr_tcp_hdr_t;
 
 /*
  * Structure of an internet header, naked of options.

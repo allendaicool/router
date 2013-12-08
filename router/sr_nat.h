@@ -52,6 +52,7 @@ struct sr_tcp_incoming {
 struct sr_nat {
     struct sr_nat_mapping *mappings;
     struct sr_tcp_incoming *incoming;
+    uint16_t aux_val;
 
     /* threading */
     pthread_mutex_t lock;
@@ -66,7 +67,7 @@ int   sr_nat_destroy(struct sr_nat *nat);  /* Destroys the nat (free memory) */
 void *sr_nat_timeout(void *nat_ptr);  /* Periodic Timout */
 
 /* Rewrite the IP packet. I use a void* to avoid a cyclic import dependency. */
-void sr_nat_rewrite_ip_packet(void* sr, uint8_t* packet, unsigned int len);
+int sr_nat_rewrite_ip_packet(void* sr, uint8_t* packet, unsigned int len);
 
 /* Get the mapping associated with given external port.
    You must free the returned structure if it is not NULL. */

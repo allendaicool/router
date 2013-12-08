@@ -273,7 +273,11 @@ void sr_handlepacket_ip(struct sr_instance* sr,
      * the router still feels like everything is the same. This
      * is the only change to the router to get a NAT working. */
     if (sr->use_nat) {
-        sr_nat_rewrite_ip_packet(sr, packet, len);
+        int drop_requested = sr_nat_rewrite_ip_packet(sr, packet, len);
+        if (drop_requested) {
+            puts("DROP requested by the NAT. Dropping packet.");
+            return;
+        }
     }
 
     ip_hdr = (sr_ip_hdr_t*)packet;

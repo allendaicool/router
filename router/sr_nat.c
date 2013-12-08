@@ -9,6 +9,15 @@
 #include <unistd.h>
 #include <stdio.h>
 
+#define REQUEST_DROP 1
+#define DONT_REQUEST_DROP 0
+
+void* memdup(void* src, int size) {
+    void* dst = malloc(size);
+    memcpy(dst,src,size);
+    return dst;
+}
+
 int sr_nat_init(struct sr_nat *nat) { /* Initializes the nat */
 
   assert(nat);
@@ -29,6 +38,7 @@ int sr_nat_init(struct sr_nat *nat) { /* Initializes the nat */
   /* CAREFUL MODIFYING CODE ABOVE THIS LINE! */
 
   nat->mappings = NULL;
+  nat->aux_val = 1024;
   /* Initialize any variables here */
 
   return success;
@@ -56,6 +66,12 @@ typedef enum {
     no_interface,
 } sr_network_location;
 
+typedef enum {
+    outgoing_pkt,
+    incoming_pkt,
+    not_traversing,
+} sr_traversal_direction;
+
 /* Finds out where an IP address is located, relative to the NAT */
 
 sr_network_location sr_get_ip_network_location(struct sr_instance* sr, uint32_t ip) {
@@ -78,9 +94,102 @@ sr_network_location sr_get_ip_network_location(struct sr_instance* sr, uint32_t 
     return no_interface;
 }
 
-/* Rewrites an IP packet in memory according to NAT rules */
+/* Find out which direction a packet is travelling, given src and dst values */
 
-void sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int len) {
+sr_traversal_direction sr_get_traversal_direction(sr_network_location src, sr_network_location dst) {
+    if (src == external_interface && dst == my_interface) return incoming_pkt;
+    if (src == internal_interface && dst == external_interface) return outgoing_pkt;
+    /* If we get here, we're not traversing */
+    return not_traversing;
+}
+
+/* Rewrite a packet with a given mapping, heading in a given direction */
+
+void sr_rewrite_packet(struct sr_instance* sr, sr_ip_hdr_t* ip_hdr, unsigned int len, struct sr_nat_mapping* mapping, sr_traversal_direction dir) {
+    /* DO nothing */
+    switch (ip_hdr->ip_p) {
+        case ip_protocol_icmp:
+            return;
+        case ip_protocol_tcp:
+            return;
+    }
+}
+
+/* Attempt to generate a mapping for this packet. If a mapping is returned, proceed to use it.
+ * If this returns NULL, drop the packet. */
+
+struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
+                                    sr_ip_hdr_t* ip_hdr, 
+                                    unsigned int len,
+                                    sr_traversal_direction dir,
+                                    uint16_t aux_value,
+                                    sr_nat_mapping_type mapping_type) {
+
+    pthread_mutex_lock(&(sr->nat.lock));
+
+    struct sr_nat_mapping *mapping = NULL;
+    switch (dir) {
+        case outgoing_pkt:
+
+            /* We can just go ahead and create all outgoing requests that don't already exist */
+
+            mapping = malloc(sizeof(struct sr_nat_mapping));
+            mapping->ip_int = ip_hdr->ip_src;
+            mapping->aux_int = aux_value;
+            mapping->last_updated = time(NULL);
+
+            /* Create the connection we'll be using to keep track of the TCP flow */
+            if (mapping_type == nat_mapping_tcp) {
+                mapping->conns = malloc(sizeof(struct sr_nat_connection));
+                memset(mapping->conns,0,sizeof(struct sr_nat_connection)); /* Zero out */
+            }
+
+            /* Create the external mapping */
+
+            struct sr_if* my_interface = sr_get_interface(sr, "eth2");
+            mapping->ip_ext = my_interface->ip;
+            mapping->aux_ext = sr->nat.aux_val;
+
+            /* Generate a new aux value for the next mapping */
+            
+            sr->nat.aux_val = (sr->nat.aux_val + 1)%65535;
+            if (sr->nat.aux_val < 1024) sr->nat.aux_val = 1024;
+
+            /* Insert into the linked list */
+
+            mapping->next = sr->nat.mappings;
+            sr->nat.mappings = mapping;
+
+            /* Return a copy */
+
+            mapping = memdup(mapping,sizeof(struct sr_nat_mapping));
+            break;
+        case incoming_pkt:
+
+            /* If an incoming packet doesn't have a mapping, our response depends on packet type. */
+            switch(mapping_type) {
+                case nat_mapping_icmp:
+                    break;
+                case nat_mapping_tcp:
+                    break;
+            }
+            break;
+        case not_traversing:
+            
+            /* This should never happen */
+
+            assert(0);
+    }
+
+    pthread_mutex_unlock(&(sr->nat.lock));
+
+    return mapping;
+}
+
+/* Rewrites an IP packet in memory according to NAT rules. A return value of 1 indicates a request
+ * to drop the packet. */
+
+int sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int len) {
     assert(sr_pointer);
     assert(packet);
 
@@ -94,59 +203,80 @@ void sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int le
 
     sr_network_location src_loc = sr_get_ip_network_location(sr, ip_hdr->ip_src);
     sr_network_location dst_loc = sr_get_ip_network_location(sr, ip_hdr->ip_dst);
+    sr_traversal_direction dir = sr_get_traversal_direction(src_loc,dst_loc);
 
-    char* src_str = ip_to_str(ntohl(ip_hdr->ip_src));
-    char* dst_str = ip_to_str(ntohl(ip_hdr->ip_dst));
-    printf("\nNAT REWRITING IP PACKET!\nSRC LOC (%s): ",src_str);
-    switch (src_loc) {
-        case external_interface:
-            printf("External Interface");
-            break;
-        case my_interface:
-            printf("My Interface");
-            break;
-        case internal_interface:
-            printf("Internal Interface");
-            break;
-        case no_interface:
-            printf("No Interface");
-            break;
-    }
-    printf("\nDST LOC (%s): ",dst_str);
-    switch (dst_loc) {
-        case external_interface:
-            printf("External Interface");
-            break;
-        case my_interface:
-            printf("My Interface");
-            break;
-        case internal_interface:
-            printf("Internal Interface");
-            break;
-        case no_interface:
-            printf("No Interface");
-            break;
-    }
-    printf("\n");
-    free(src_str);
-    free(dst_str);
+    /* Get the aux value and packet type for looking up the mapping */
 
-    /* Fork based on the type of packet */
+    uint16_t aux_value = 0;
+    sr_nat_mapping_type mapping_type;
+    int unsupported_protocol = 0;
 
     switch (ip_hdr->ip_p) {
         case ip_protocol_icmp:
-            return;
+            {
+                sr_icmp_hdr_t *icmp = 0; /*(sr_icmp_hdr_t*)(packet+sizeof(sr_ip_hdr_t));*/
+                aux_value = icmp->icmp_identifier;
+                mapping_type = nat_mapping_icmp;
+                break;
+            }
         case ip_protocol_tcp:
-            return;
+            {
+                sr_tcp_hdr_t *tcp = (sr_tcp_hdr_t*)(packet+sizeof(sr_ip_hdr_t));
+                aux_value = tcp->src_port;
+                mapping_type = nat_mapping_tcp;
+                break;
+            }
+        default:
+            unsupported_protocol = 1;
     }
 
-    /* Ignore all others */
-}
+    /* Lookup the mapping for the packet */
 
-void sr_nat_rewrite_icmp_packet(struct sr_instance* sr, uint8_t* packet, unsigned int len) {
-}
+    struct sr_nat_mapping* mapping = NULL;
 
-void sr_nat_rewrite_tcp_packet(struct sr_instance* sr, uint8_t* packet, unsigned int len) {
+    switch (dir) {
+        case incoming_pkt:
+            {
+                if (unsupported_protocol) return REQUEST_DROP;
+                mapping = sr_nat_lookup_external(&sr->nat, aux_value, mapping_type);
+                break;
+            }
+        case outgoing_pkt:
+            {
+                if (unsupported_protocol) return REQUEST_DROP;
+                mapping = sr_nat_lookup_internal(&sr->nat, aux_value, ip_hdr->ip_src, mapping_type);
+                break;
+            }
+        case not_traversing:
+            /* We can safely allow any non-traversing packets to pass
+             * unmolested */
+            return DONT_REQUEST_DROP;
+    }
+
+
+    /* If the mapping doesn't exist, we're in a tricky spot */
+
+    if (mapping == NULL) {
+        printf("No mapping found. Attempting to create one\n");
+        mapping = sr_generate_mapping(sr, ip_hdr, len, dir, aux_value, mapping_type);
+
+        /* If no mapping could be generated, then we need to request to
+         * drop the packet */
+
+        if (mapping == NULL) {
+            return REQUEST_DROP;
+        }
+        printf("Mapping successfully created\n");
+    }
+
+    /* If we get here, there must be a mapping, so rewrite with it */
+
+    sr_rewrite_packet(sr,ip_hdr,len,mapping,dir);
+    free(mapping); /* Free the copy */
+
+    /* If we got here, we rewrote a packet successfully. Forward away. */
+
+    return DONT_REQUEST_DROP;
 }
 
 void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
@@ -174,6 +304,15 @@ struct sr_nat_mapping *sr_nat_lookup_external(struct sr_nat *nat,
   /* handle lookup here, malloc and assign to copy */
   struct sr_nat_mapping *copy = NULL;
 
+  struct sr_nat_mapping *mapping_walker = nat->mappings;
+  while (mapping_walker != NULL) {
+      if (mapping_walker->aux_ext == aux_ext) {
+          copy = memdup(mapping_walker,sizeof(struct sr_nat_mapping));
+          break;
+      }
+      mapping_walker = mapping_walker->next;
+  }
+
   pthread_mutex_unlock(&(nat->lock));
   return copy;
 }
@@ -187,6 +326,15 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
 
   /* handle lookup here, malloc and assign to copy. */
   struct sr_nat_mapping *copy = NULL;
+
+  struct sr_nat_mapping *mapping_walker = nat->mappings;
+  while (mapping_walker != NULL) {
+      if (mapping_walker->aux_int == aux_int && mapping_walker->ip_int == ip_int) {
+          copy = memdup(mapping_walker,sizeof(struct sr_nat_mapping));
+          break;
+      }
+      mapping_walker = mapping_walker->next;
+  }
 
   pthread_mutex_unlock(&(nat->lock));
   return copy;
