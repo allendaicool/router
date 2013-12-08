@@ -354,12 +354,14 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
     printf("Seen external syn %u\n",ntohl(conn->seen_external_syn));
     printf("Seen internal fin %u\n",ntohl(conn->seen_internal_fin));
     printf("Seen external fin %u\n",ntohl(conn->seen_external_fin));
+    printf("Seen internal fin-ack %u\n",conn->seen_internal_fin_ack);
+    printf("Seen external fin-ack %u\n",conn->seen_external_fin_ack);
     printf("--------------\n");
 
     /* If we've seen both fin_ack's, then close up shop */
 
     if (conn->seen_internal_fin_ack && conn->seen_external_fin_ack) {
-        /* TODO */
+        printf("CLOSING CONNECTION\n");
     }
 
     pthread_mutex_unlock(&(sr->nat.lock));
