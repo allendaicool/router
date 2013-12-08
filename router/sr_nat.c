@@ -319,7 +319,7 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
             conn->seen_external_fin = tcp_hdr->seqno;
             puts("SAW EXTERNAL FIN");
         }
-        if (conn->seen_internal_fin && ntohs(tcp_hdr->ackno) == ntohs(conn->seen_internal_fin)+1) {
+        if (conn->seen_internal_fin && (ntohs(tcp_hdr->ackno) == ntohs(conn->seen_internal_fin)+1)) {
             conn->seen_external_fin_ack = 1;
             puts("SAW EXTERNAL FIN-ACK");
         }
@@ -333,7 +333,7 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
             conn->seen_internal_fin = tcp_hdr->seqno;
             puts("SAW INTERNAL FIN");
         }
-        if (conn->seen_external_fin && ntohs(tcp_hdr->ackno) == ntohs(conn->seen_internal_fin)+1) {
+        if (conn->seen_external_fin && (ntohs(tcp_hdr->ackno) == ntohs(conn->seen_internal_fin)+1)) {
             conn->seen_internal_fin_ack = 1;
             puts("SAW INTERNAL FIN-ACK");
         }
