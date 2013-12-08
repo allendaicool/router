@@ -396,7 +396,7 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
       char* temp_mapping = ip_to_str(mapping_walker->ip_int);
       char* temp_test = ip_to_str(ip_int);
 
-      printf("Checking mapping with (%i, %s) for (%i, %s) observed.\n",mapping_walker->aux_ext,temp_mapping,aux_ext,temp_test);
+      printf("Checking mapping with (%i, %s) for (%i, %s) observed.\n",mapping_walker->aux_int,temp_mapping,aux_int,temp_test);
       if (mapping_walker->aux_int == aux_int && mapping_walker->ip_int == ip_int) {
           copy = memdup(mapping_walker,sizeof(struct sr_nat_mapping));
           break;
