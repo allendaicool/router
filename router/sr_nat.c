@@ -110,13 +110,17 @@ void sr_rewrite_packet(struct sr_instance* sr, sr_ip_hdr_t* ip_hdr, unsigned int
 
     /* Either protocol, we need to rewrite the src IP and redo IP cksum, so do that first */
     uint16_t aux_value = 0;
+    /* Get an IP address to use for translation. We know eth1 will exist, so use that one */
+    struct sr_if* my_interface = sr_get_interface(sr, "eth1");
     switch (dir) {
         case incoming_pkt:
-            ip_hdr->ip_src = mapping->ip_int;
+            ip_hdr->ip_src = my_interface->ip;
+            ip_hdr->ip_dst = mapping->ip_int;
             aux_value = mapping->aux_int;
             break;
         case outgoing_pkt:
-            ip_hdr->ip_src = mapping->ip_ext;
+            ip_hdr->ip_src = my_interface->ip;
+            ip_hdr->ip_dst = mapping->ip_ext;
             aux_value = mapping->aux_ext;
             break;
         case not_traversing:
@@ -170,6 +174,8 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
             mapping = malloc(sizeof(struct sr_nat_mapping));
             mapping->ip_int = ip_hdr->ip_src;
             mapping->aux_int = aux_value;
+            mapping->ip_ext = ip_hdr->ip_dst;
+            mapping->aux_ext = sr->nat.aux_val;
             mapping->last_updated = time(NULL);
 
             /* Create the connection we'll be using to keep track of the TCP flow */
@@ -177,12 +183,6 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
                 mapping->conns = malloc(sizeof(struct sr_nat_connection));
                 memset(mapping->conns,0,sizeof(struct sr_nat_connection)); /* Zero out */
             }
-
-            /* Create the external mapping */
-
-            struct sr_if* my_interface = sr_get_interface(sr, "eth2");
-            mapping->ip_ext = my_interface->ip;
-            mapping->aux_ext = sr->nat.aux_val;
 
             /* Generate a new aux value for the next mapping */
             
