@@ -319,7 +319,6 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
             conn->seen_external_fin = tcp_hdr->seqno;
             puts("SAW EXTERNAL FIN");
         }
-        printf("Seen internal fin %i\n",ntohs(conn->seen_internal_fin));
         if (conn->seen_internal_fin) {
             printf("Checking ackno (%i) against internal fin seqno (%i)\n",ntohs(tcp_hdr->ackno),ntohs(conn->seen_internal_fin)+1);
             if (ntohs(tcp_hdr->ackno) == ntohs(conn->seen_internal_fin)+1) {
@@ -337,7 +336,6 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
             conn->seen_internal_fin = tcp_hdr->seqno;
             puts("SAW INTERNAL FIN");
         }
-        printf("Seen external fin %i\n",ntohs(conn->seen_external_fin));
         if (conn->seen_external_fin) {
             printf("Checking ackno (%i) against external fin seqno (%i)\n",ntohs(tcp_hdr->ackno),ntohs(conn->seen_external_fin)+1);
             if (ntohs(tcp_hdr->ackno) == ntohs(conn->seen_external_fin)+1) {
@@ -346,6 +344,12 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
             }
         }
     }
+    printf("--------------\nSTATUS:\n");
+    printf("Seen internal syn %i\n",ntohs(conn->seen_internal_syn));
+    printf("Seen external syn %i\n",ntohs(conn->seen_external_syn));
+    printf("Seen internal fin %i\n",ntohs(conn->seen_internal_fin));
+    printf("Seen external fin %i\n",ntohs(conn->seen_external_fin));
+    printf("--------------\n");
 
     /* If we've seen both fin_ack's, then close up shop */
 
