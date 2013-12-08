@@ -113,11 +113,13 @@ uint16_t cksum_tcp(sr_ip_hdr_t* ip_hdr, sr_tcp_hdr_t* tcp_hdr, uint16_t len) {
     memset(blob,0,bloblen);
 
     memcpy(blob+sizeof(sr_tcp_psuedo_hdr_t),tcp_hdr,len);
+
     sr_tcp_psuedo_hdr_t *psuedo = (sr_tcp_psuedo_hdr_t*)blob;
     psuedo->ip_src = ip_hdr->ip_src;
     psuedo->ip_dst = ip_hdr->ip_dst;
+    psuedo->reserved = 0;
     psuedo->ip_tos = ip_hdr->ip_tos;
-    psuedo->tcp_len = len;
+    psuedo->tcp_len = htons(len);
 
     uint16_t cksum_val = cksum(blob,bloblen);
     free(blob);
