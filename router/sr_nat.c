@@ -309,7 +309,7 @@ int sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int len
             printf("Looking up (%i, %s).\n",ntohs(aux_value),temp);
             free(temp);
             if (unsupported_protocol) return REQUEST_DROP;
-            mapping = sr_nat_lookup_internal(&sr->nat, aux_value, ip_hdr->ip_src, mapping_type);
+            mapping = sr_nat_lookup_internal(&sr->nat, ip_hdr->ip_src, aux_value, mapping_type);
             break;
         }
         case not_traversing:
@@ -390,7 +390,8 @@ struct sr_nat_mapping *sr_nat_lookup_external(struct sr_nat *nat,
 
 /* Get the mapping associated with given internal (ip, port) pair.
    You must free the returned structure if it is not NULL. */
-struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat, uint16_t aux_int, uint32_t ip_int,  sr_nat_mapping_type type ) {
+struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
+  uint32_t ip_int, uint16_t aux_int, sr_nat_mapping_type type ) {
 
   pthread_mutex_lock(&(nat->lock));
 
