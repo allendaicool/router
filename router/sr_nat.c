@@ -98,6 +98,7 @@ sr_network_location sr_get_ip_network_location(struct sr_instance* sr, uint32_t 
 
 sr_traversal_direction sr_get_traversal_direction(sr_network_location src, sr_network_location dst) {
     if (src == external_interface && dst == my_interface) return incoming_pkt;
+    if (src == external_interface && dst == internal_interface) return incoming_pkt;
     if (src == internal_interface && dst == external_interface) return outgoing_pkt;
     /* If we get here, we're not traversing */
     return not_traversing;
