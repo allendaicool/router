@@ -313,29 +313,29 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
     if (dir == incoming_pkt) {
         if (!conn->seen_external_syn && (tcp_hdr->flags & TCP_SYN_FLAG)) {
             conn->seen_external_syn = tcp_hdr->seqno;
-            printf("SAW EXTERNAL SYN");
+            puts("SAW EXTERNAL SYN");
         }
         if (!conn->seen_external_fin && (tcp_hdr->flags & TCP_FIN_FLAG)) {
             conn->seen_external_fin = tcp_hdr->seqno;
-            printf("SAW EXTERNAL FIN");
+            puts("SAW EXTERNAL FIN");
         }
-        if (conn->seen_internal_fin && tcp_hdr->ackno == conn->seen_internal_fin) {
+        if (conn->seen_internal_fin && ntohs(tcp_hdr->ackno) == ntohs(conn->seen_internal_fin)+1) {
             conn->seen_external_fin_ack = 1;
-            printf("SAW EXTERNAL FIN-ACK");
+            puts("SAW EXTERNAL FIN-ACK");
         }
     }
     if (dir == outgoing_pkt) {
         if (!conn->seen_internal_syn && (tcp_hdr->flags & TCP_SYN_FLAG)) {
             conn->seen_internal_syn = tcp_hdr->seqno;
-            printf("SAW INTERNAL SYN");
+            puts("SAW INTERNAL SYN");
         }
         if (!conn->seen_internal_fin && (tcp_hdr->flags & TCP_FIN_FLAG)) {
             conn->seen_internal_fin = tcp_hdr->seqno;
-            printf("SAW INTERNAL FIN");
+            puts("SAW INTERNAL FIN");
         }
-        if (conn->seen_external_fin && tcp_hdr->ackno == conn->seen_internal_fin) {
+        if (conn->seen_external_fin && ntohs(tcp_hdr->ackno) == ntohs(conn->seen_internal_fin)+1) {
             conn->seen_internal_fin_ack = 1;
-            printf("SAW INTERNAL FIN-ACK");
+            puts("SAW INTERNAL FIN-ACK");
         }
     }
 
