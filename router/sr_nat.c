@@ -246,11 +246,18 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
     struct sr_nat_mapping *mapping = sr->nat.mappings;
     while (mapping != NULL) {
         if (dir == incoming_pkt) {
+            printf("Mapping (%i), Observed (%i).\n",ntohs(mapping->aux_ext),ntohs(tcp_hdr->dst_port));
             if (tcp_hdr->dst_port == mapping->aux_ext) {
                 break;
             }
         }
         if (dir == outgoing_pkt) {
+            char* temp_mapping = ip_to_str(mapping->ip_int);
+            char* temp_test = ip_to_str(ip_hdr->ip_src);
+            printf("Mapping (%i, %s), Observed (%i, %s).\n",ntohs(mapping->aux_int),temp_mapping,ntohs(aux_int),temp_test);
+            free(temp_mapping);
+            free(temp_test);
+
             if (ip_hdr->ip_src == mapping->ip_int && tcp_hdr->src_port == mapping->aux_int) {
                 break;
             }
@@ -495,16 +502,15 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
   while (mapping_walker != NULL) {
       char* temp_mapping = ip_to_str(mapping_walker->ip_int);
       char* temp_test = ip_to_str(ip_int);
-
       printf("Mapping (%i, %s), Observed (%i, %s).\n",ntohs(mapping_walker->aux_int),temp_mapping,ntohs(aux_int),temp_test);
+      free(temp_mapping);
+      free(temp_test);
+
       if (mapping_walker->aux_int == aux_int && mapping_walker->ip_int == ip_int) {
           copy = memdup(mapping_walker,sizeof(struct sr_nat_mapping));
           break;
       }
       mapping_walker = mapping_walker->next;
-
-      free(temp_mapping);
-      free(temp_test);
   }
 
   pthread_mutex_unlock(&(nat->lock));
