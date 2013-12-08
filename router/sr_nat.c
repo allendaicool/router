@@ -305,6 +305,9 @@ int sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int len
         case outgoing_pkt:
         {
             puts("Packet outgoing through NAT\n");
+            char* temp = ip_to_str(ip_hdr->ip_src);
+            printf("Looking up (%i, %s).\n",ntohs(aux_value),temp);
+            free(temp);
             if (unsupported_protocol) return REQUEST_DROP;
             mapping = sr_nat_lookup_internal(&sr->nat, aux_value, ip_hdr->ip_src, mapping_type);
             break;
