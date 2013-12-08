@@ -320,7 +320,9 @@ int sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int len
     /* If the mapping doesn't exist, we're in a tricky spot */
 
     if (mapping == NULL) {
-        printf("No mapping found. Attempting to create one\n");
+        char* temp = ip_to_str(ip_hdr->ip_src);
+        printf("No mapping found. Attempting to create one for (%i, %s)\n",ntohs(aux_value),temp);
+        free(temp);
         mapping = sr_generate_mapping(sr, ip_hdr, len, dir, aux_value, mapping_type);
 
         /* If no mapping could be generated, then we need to request to
