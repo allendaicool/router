@@ -31,6 +31,7 @@ struct sr_nat_connection {
     uint16_t port_dst;
 
     struct sr_nat_connection *next;
+    struct sr_nat_connection *prev;
 };
 
 /* NAT mapping state */
@@ -44,6 +45,7 @@ struct sr_nat_mapping {
     time_t last_updated; /* use to timeout mappings */
     struct sr_nat_connection *conns; /* TCP holds a connection. null for ICMP */
     struct sr_nat_mapping *next;
+    struct sr_nat_mapping *prev;
 };
 
 /* Contains state on unsolicited SYN packets

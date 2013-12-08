@@ -187,8 +187,12 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
             if (sr->nat.aux_val < 1024) sr->nat.aux_val = 1024;
 
             /* Insert into the linked list */
+            if (sr->nat.mappings) {
+                sr->nat.mappings->prev = mapping;
+            }
             mapping->next = sr->nat.mappings;
             sr->nat.mappings = mapping;
+            mapping->prev = NULL;
 
             /* Return a copy */
             mapping = memdup(mapping,sizeof(struct sr_nat_mapping));
@@ -205,7 +209,7 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
                     /* Queue unsolicited incoming TCP SYN packets for ICMP errors if they time out */
                     sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
                     if (tcp_hdr->flags & TCP_SYN_FLAG) {
-                        printf("Unsolicited inbound SYN detected");
+                        printf("Unsolicited inbound SYN detected\n");
                         struct sr_tcp_incoming *new_incoming = (struct sr_tcp_incoming*)malloc(sizeof(struct sr_tcp_incoming));
                         new_incoming->ip_ext = ip_hdr->ip_src;
                         new_incoming->aux_ext = aux_value;
@@ -306,8 +310,13 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
         memset(conn,0,sizeof(struct sr_nat_connection));
         conn->ip_dst = ip_dst;
         conn->port_dst = port_dst;
+
+        if (mapping->conns != NULL) {
+            mapping->conns->prev = conn;
+        }
         conn->next = mapping->conns;
         mapping->conns = conn;
+        conn->prev = NULL;
     }
 
     /* Update the seen packet values for the connection */
@@ -362,6 +371,35 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
 
     if (conn->seen_internal_fin_ack && conn->seen_external_fin_ack) {
         printf("CLOSING CONNECTION\n");
+        if (conn->prev) {
+            conn->prev->next = conn->next;
+        }
+        if (conn->next) {
+            conn->next->prev = conn->prev;
+        }
+        /* If we were the first in the list, then set the list start
+         * to our next pointer */
+        if (conn->prev == NULL) {
+            mapping->conns = conn->next;
+        }
+        /* Now we get rid of the mapping. Done and done */
+        free(conn);
+
+        /* If that was the last connection for the mapping, let's delete 
+         * the mapping too */
+        if (mapping->conns == NULL) {
+            printf("REMOVING MAPPING\n");
+            if (mapping->prev) {
+                mapping->prev->next = mapping->next;
+            }
+            if (mapping->next) {
+                mapping->next->prev = mapping->prev;
+            }
+            if (mapping->prev == NULL) {
+                sr->nat.mappings = mapping->next;
+            }
+            free(mapping);
+        }
     }
 
     pthread_mutex_unlock(&(sr->nat.lock));
