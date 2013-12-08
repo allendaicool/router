@@ -144,6 +144,16 @@ struct sr_tcp_hdr {
 } __attribute__ ((packed)) ;
 typedef struct sr_tcp_hdr sr_tcp_hdr_t;
 
+struct sr_tcp_psuedo_hdr
+{
+    uint32_t ip_src;
+    uint32_t ip_dst;
+    uint8_t reserved;
+    uint8_t ip_tos;
+    uint16_t tcp_len;
+} __attribute__ ((packed)) ;
+typedef struct sr_tcp_psuedo_hdr sr_tcp_psuedo_hdr_t;
+
 /*
  * Structure of an internet header, naked of options.
  */
@@ -175,16 +185,6 @@ struct sr_ip_hdr
     uint32_t ip_src, ip_dst;	/* source and dest address */
   } __attribute__ ((packed)) ;
 typedef struct sr_ip_hdr sr_ip_hdr_t;
-
-struct sr_tcp_psuedo_hdr
-{
-    uint32_t ip_src;
-    uint32_t ip_dst;
-    uint8_t reserved;
-    uint8_t ip_tos;
-    uint16_t tcp_len;
-} __attribute__ ((packed)) ;
-typedef struct sr_tcp_psuedo_hdr sr_tcp_psuedo_hdr_t;
 
 /* 
  *  Ethernet packet header prototype.  Too many O/S's define this differently.
