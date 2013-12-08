@@ -18,11 +18,19 @@ typedef enum {
  * simplicity. */
 
 struct sr_nat_connection {
-    int seen_external_syn;
-    int seen_internal_syn;
+    uint32_t seen_external_syn;
+    uint32_t seen_internal_syn;
 
-    int seen_external_fin;
-    int seen_internal_fin;
+    uint32_t seen_external_fin;
+    uint32_t seen_internal_fin;
+
+    uint32_t seen_external_fin_ack;
+    uint32_t seen_internal_fin_ack;
+
+    uint32_t ip_dst;
+    uint16_t port_dst;
+
+    struct sr_nat_connection *next;
 };
 
 /* NAT mapping state */

@@ -178,9 +178,9 @@ struct sr_rt *sr_rt_longest_match(struct sr_instance* sr, uint32_t ip) {
 
     /* Setup to find the longest match */
 
-    char* temp_ip = ip_to_str(ip);
+    /*char* temp_ip = ip_to_str(ip);
     printf("Looking up longest match for %s\n",temp_ip);
-    free(temp_ip);
+    free(temp_ip);*/
 
     rt_walker = sr->routing_table;
     while (rt_walker)
@@ -188,12 +188,14 @@ struct sr_rt *sr_rt_longest_match(struct sr_instance* sr, uint32_t ip) {
         uint32_t rt_walker_ip = (uint32_t)rt_walker->dest.s_addr;
         uint32_t rt_walker_mask = (uint32_t)rt_walker->mask.s_addr;
 
+        /*
         temp_ip = ip_to_str(rt_walker->dest.s_addr);
         printf("Checking %s",temp_ip);
         free(temp_ip);
         temp_ip = ip_to_str(rt_walker->mask.s_addr);
         printf(" mask %s\n",temp_ip);
         free(temp_ip);
+        */
 
         /* First check for matches with some bit-twiddling, then test how 
          * long the match is.
@@ -202,7 +204,7 @@ struct sr_rt *sr_rt_longest_match(struct sr_instance* sr, uint32_t ip) {
         uint32_t same_bits = ~(rt_walker_ip ^ ip);
         if ((same_bits & rt_walker_mask) == rt_walker_mask) {
 
-            printf("Match length: %u\n", rt_walker->mask_bit_length);
+            /*printf("Match length: %u\n", rt_walker->mask_bit_length);*/
 
             if (rt_walker->mask_bit_length >= longest_match_length) {
                 longest_match_length = rt_walker->mask_bit_length;

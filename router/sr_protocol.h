@@ -128,13 +128,16 @@ struct sr_icmp_t3_hdr {
 } __attribute__ ((packed)) ;
 typedef struct sr_icmp_t3_hdr sr_icmp_t3_hdr_t;
 
+#define TCP_SYN_FLAG 0x02
+#define TCP_FIN_FLAG 0x01
 
 struct sr_tcp_hdr {
     uint16_t src_port;
     uint16_t dst_port;
     uint32_t seqno;
     uint32_t ackno;
-    uint16_t unused; /* A whole bunch of flags etc */
+    uint8_t reserved;
+    uint8_t flags;
     uint16_t window_size;
     uint16_t cksum;
     uint16_t urgent_ptr;

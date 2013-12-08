@@ -196,3 +196,24 @@ void print_hdrs(uint8_t *buf, uint32_t length) {
   }
 }
 
+uint16_t cksum_tcp(sr_ip_hdr_t* ip_hdr, sr_tcp_hdr_t* tcp_hdr, uint16_t len) {
+
+    size_t bloblen = sizeof(sr_tcp_psuedo_hdr_t)+len;
+
+    tcp_hdr->cksum = 0;
+    void* blob = malloc(bloblen);
+    memset(blob,0,bloblen);
+
+    memcpy(blob+sizeof(sr_tcp_psuedo_hdr_t),tcp_hdr,len);
+
+    sr_tcp_psuedo_hdr_t *psuedo = (sr_tcp_psuedo_hdr_t*)blob;
+    psuedo->ip_src = ip_hdr->ip_src;
+    psuedo->ip_dst = ip_hdr->ip_dst;
+    psuedo->reserved = 0;
+    psuedo->ip_tos = 6;
+    psuedo->tcp_len = htons(len);
+
+    uint16_t cksum_val = cksum(blob,bloblen);
+    free(blob);
+    return cksum_val;
+}

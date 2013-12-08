@@ -104,28 +104,6 @@ sr_traversal_direction sr_get_traversal_direction(sr_network_location src, sr_ne
     return not_traversing;
 }
 
-uint16_t cksum_tcp(sr_ip_hdr_t* ip_hdr, sr_tcp_hdr_t* tcp_hdr, uint16_t len) {
-
-    size_t bloblen = sizeof(sr_tcp_psuedo_hdr_t)+len;
-
-    tcp_hdr->cksum = 0;
-    void* blob = malloc(bloblen);
-    memset(blob,0,bloblen);
-
-    memcpy(blob+sizeof(sr_tcp_psuedo_hdr_t),tcp_hdr,len);
-
-    sr_tcp_psuedo_hdr_t *psuedo = (sr_tcp_psuedo_hdr_t*)blob;
-    psuedo->ip_src = ip_hdr->ip_src;
-    psuedo->ip_dst = ip_hdr->ip_dst;
-    psuedo->reserved = 0;
-    psuedo->ip_tos = 6;
-    psuedo->tcp_len = htons(len);
-
-    uint16_t cksum_val = cksum(blob,bloblen);
-    free(blob);
-    return cksum_val;
-}
-
 /* Rewrite a packet with a given mapping, heading in a given direction */
 
 void sr_rewrite_packet(struct sr_instance* sr, sr_ip_hdr_t* ip_hdr, unsigned int len, struct sr_nat_mapping* mapping, sr_traversal_direction dir) {
@@ -195,7 +173,6 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
         case outgoing_pkt:
 
             /* We can just go ahead and create all outgoing requests that don't already exist */
-
             mapping = malloc(sizeof(struct sr_nat_mapping));
             mapping->ip_int = ip_hdr->ip_src;
             mapping->aux_int = aux_value;
@@ -210,17 +187,14 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
             }
 
             /* Generate a new aux value for the next mapping */
-            
             sr->nat.aux_val = (sr->nat.aux_val + 1)%65535;
             if (sr->nat.aux_val < 1024) sr->nat.aux_val = 1024;
 
             /* Insert into the linked list */
-
             mapping->next = sr->nat.mappings;
             sr->nat.mappings = mapping;
 
             /* Return a copy */
-
             mapping = memdup(mapping,sizeof(struct sr_nat_mapping));
             break;
         case incoming_pkt:
@@ -228,9 +202,25 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
             /* If an incoming packet doesn't have a mapping, our response depends on packet type. */
             switch(mapping_type) {
                 case nat_mapping_icmp:
+                    /* Drop ICMP packets silently */
                     break;
                 case nat_mapping_tcp:
+                {
+                    /* Queue unsolicited incoming TCP SYN packets for ICMP errors if they time out */
+                    sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
+                    if (tcp_hdr->flags & TCP_SYN_FLAG) {
+                        printf("Unsolicited inbound SYN detected");
+                        struct sr_tcp_incoming *new_incoming = (struct sr_tcp_incoming*)malloc(sizeof(struct sr_tcp_incoming));
+                        new_incoming->ip_ext = ip_hdr->ip_src;
+                        new_incoming->aux_ext = aux_value;
+                        new_incoming->syn_arrived = time(NULL);
+
+                        /* Insert into the linked list */
+                        new_incoming->next = sr->nat.incoming;
+                        sr->nat.incoming = new_incoming;
+                    }
                     break;
+                }
             }
             break;
         case not_traversing:
@@ -243,6 +233,102 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
     pthread_mutex_unlock(&(sr->nat.lock));
 
     return mapping;
+}
+
+/* Deals with noting connection changes by snooping TCP flags in the concurrency-aware way
+ */
+
+void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp_hdr_t *tcp_hdr, sr_traversal_direction dir) {
+    pthread_mutex_lock(&(sr->nat.lock));
+
+    /* Find the actual mapping for this value */
+
+    struct sr_nat_mapping *mapping = sr->nat.mappings;
+    while (mapping != NULL) {
+        if (dir == incoming_pkt) {
+            if (tcp_hdr->dst_port == mapping->aux_ext) {
+                break;
+            }
+        }
+        if (dir == outgoing_pkt) {
+            if (ip_hdr->ip_src == mapping->ip_int && tcp_hdr->src_port == mapping->aux_int) {
+                break;
+            }
+        }
+        mapping = mapping->next;
+    }
+
+    if (mapping == NULL) {
+        /* This should never happen, since we just checked that mappings are non-null before we called this function */
+        printf("TCP NOTE CONNECTION has failed to find a mapping. This shouldn't happen. Go check it out. Non-fatal.");
+        return;
+    }
+
+    /* Find the connection associated with this tcp flow, if there is one */
+
+    uint32_t ip_dst;
+    uint16_t port_dst;
+
+    if (dir == incoming_pkt) {
+        ip_dst = ip_hdr->ip_src;
+        port_dst = tcp_hdr->src_port;
+    }
+    if (dir == outgoing_pkt) {
+        ip_dst = ip_hdr->ip_dst;
+        port_dst = tcp_hdr->dst_port;
+    }
+
+    struct sr_nat_connection *conn = mapping->conns;    
+    while (conn != NULL) {
+        if (conn->ip_dst == ip_dst && conn->port_dst == port_dst) {
+            break;
+        }
+        conn = conn->next;
+    }
+
+    /* Create a connection if there isn't one already */
+
+    if (conn == NULL) {
+        conn = malloc(sizeof(struct sr_nat_connection));
+        memset(conn,0,sizeof(struct sr_nat_connection));
+        conn->ip_dst = ip_dst;
+        conn->port_dst = port_dst;
+        conn->next = mapping->conns;
+        mapping->conns = conn->next;
+    }
+
+    /* Update the seen packet values for the connection */
+
+    if (dir == incoming_pkt) {
+        if (!conn->seen_external_syn && (tcp_hdr->flags & TCP_SYN_FLAG)) {
+            conn->seen_external_syn = tcp_hdr->seqno;
+        }
+        if (!conn->seen_external_fin && (tcp_hdr->flags & TCP_FIN_FLAG)) {
+            conn->seen_external_fin = tcp_hdr->seqno;
+        }
+        if (conn->seen_internal_fin && tcp_hdr->ackno == conn->seen_internal_fin) {
+            conn->seen_external_fin_ack = 1;
+        }
+    }
+    if (dir == outgoing_pkt) {
+        if (!conn->seen_internal_syn && (tcp_hdr->flags & TCP_SYN_FLAG)) {
+            conn->seen_internal_syn = tcp_hdr->seqno;
+        }
+        if (!conn->seen_internal_fin && (tcp_hdr->flags & TCP_FIN_FLAG)) {
+            conn->seen_internal_fin = tcp_hdr->seqno;
+        }
+        if (conn->seen_external_fin && tcp_hdr->ackno == conn->seen_internal_fin) {
+            conn->seen_internal_fin_ack = 1;
+        }
+    }
+
+    /* If we've seen both fin_ack's, then close up shop */
+
+    if (conn->seen_internal_fin_ack && conn->seen_external_fin_ack) {
+        /* TODO */
+    }
+
+    pthread_mutex_unlock(&(sr->nat.lock));
 }
 
 /* Rewrites an IP packet in memory according to NAT rules. A return value of 1 indicates a request
@@ -343,6 +429,13 @@ int sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int len
 
     sr_rewrite_packet(sr,ip_hdr,len,mapping,dir);
     free(mapping); /* Free the copy */
+
+    /* Do the checking for TCP connection state changes in a concurrent-safe way */
+
+    if (ip_hdr->ip_p == ip_protocol_tcp) {
+        sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
+        sr_tcp_note_connections(sr,ip_hdr,tcp_hdr,dir);
+    }
 
     /* If we got here, we rewrote a packet successfully. Forward away. */
 
