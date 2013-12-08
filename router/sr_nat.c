@@ -104,7 +104,7 @@ sr_traversal_direction sr_get_traversal_direction(sr_network_location src, sr_ne
     return not_traversing;
 }
 
-uint16_t cksum_tcp(sr_ip_hdr_t* ip_hdr, sr_tcp_hdr_t* tcp_hdr, unsigned int len) {
+uint16_t cksum_tcp(sr_ip_hdr_t* ip_hdr, sr_tcp_hdr_t* tcp_hdr, uint16_t len) {
 
     tcp_hdr->cksum = 0;
     void* blob = malloc(sizeof(sr_tcp_psuedo_hdr_t)+len);
