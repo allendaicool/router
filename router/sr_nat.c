@@ -107,12 +107,45 @@ sr_traversal_direction sr_get_traversal_direction(sr_network_location src, sr_ne
 /* Rewrite a packet with a given mapping, heading in a given direction */
 
 void sr_rewrite_packet(struct sr_instance* sr, sr_ip_hdr_t* ip_hdr, unsigned int len, struct sr_nat_mapping* mapping, sr_traversal_direction dir) {
-    /* DO nothing */
+
+    /* Either protocol, we need to rewrite the src IP and redo IP cksum, so do that first */
+    uint16_t aux_value = 0;
+    switch (dir) {
+        case incoming_pkt:
+            ip_hdr->ip_src = mapping->ip_int;
+            aux_value = mapping->aux_int;
+            break;
+        case outgoing_pkt:
+            ip_hdr->ip_src = mapping->ip_ext;
+            aux_value = mapping->aux_ext;
+            break;
+        case not_traversing:
+            /* This should not happen */
+            assert(0);
+            break;
+    }
+    ip_hdr->ip_sum = 0;
+    ip_hdr->ip_sum = cksum(ip_hdr,sizeof(sr_ip_hdr_t));
+
+    /* Then we need to rewrite the auxiliary value, which is specific to protocol type */
+
     switch (ip_hdr->ip_p) {
         case ip_protocol_icmp:
-            return;
+        {
+            sr_icmp_hdr_t *icmp_hdr = (sr_icmp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
+            icmp_hdr->icmp_identifier = aux_value;
+            icmp_hdr->icmp_sum = 0;
+            icmp_hdr->icmp_sum = cksum(icmp_hdr,sizeof(sr_icmp_hdr_t));
+            break;
+        }
         case ip_protocol_tcp:
-            return;
+        {
+            sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
+            tcp_hdr->src_port = aux_value;
+            tcp_hdr->cksum = 0;
+            tcp_hdr->cksum = cksum(tcp_hdr,len-sizeof(sr_ip_hdr_t));
+            break;
+        }
     }
 }
 
@@ -214,19 +247,19 @@ int sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int len
 
     switch (ip_hdr->ip_p) {
         case ip_protocol_icmp:
-            {
-                sr_icmp_hdr_t *icmp = (sr_icmp_hdr_t*)(packet+sizeof(sr_ip_hdr_t));
-                aux_value = icmp->icmp_identifier;
-                mapping_type = nat_mapping_icmp;
-                break;
-            }
+        {
+            sr_icmp_hdr_t *icmp = (sr_icmp_hdr_t*)(packet+sizeof(sr_ip_hdr_t));
+            aux_value = icmp->icmp_identifier;
+            mapping_type = nat_mapping_icmp;
+            break;
+        }
         case ip_protocol_tcp:
-            {
-                sr_tcp_hdr_t *tcp = (sr_tcp_hdr_t*)(packet+sizeof(sr_ip_hdr_t));
-                aux_value = tcp->src_port;
-                mapping_type = nat_mapping_tcp;
-                break;
-            }
+        {
+            sr_tcp_hdr_t *tcp = (sr_tcp_hdr_t*)(packet+sizeof(sr_ip_hdr_t));
+            aux_value = tcp->src_port;
+            mapping_type = nat_mapping_tcp;
+            break;
+        }
         default:
             unsupported_protocol = 1;
     }
@@ -237,19 +270,19 @@ int sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int len
 
     switch (dir) {
         case incoming_pkt:
-            {
-                puts("Packing incoming through NAT\n");
-                if (unsupported_protocol) return REQUEST_DROP;
-                mapping = sr_nat_lookup_external(&sr->nat, aux_value, mapping_type);
-                break;
-            }
+        {
+            puts("Packing incoming through NAT\n");
+            if (unsupported_protocol) return REQUEST_DROP;
+            mapping = sr_nat_lookup_external(&sr->nat, aux_value, mapping_type);
+            break;
+        }
         case outgoing_pkt:
-            {
-                puts("Packing outgoing through NAT\n");
-                if (unsupported_protocol) return REQUEST_DROP;
-                mapping = sr_nat_lookup_internal(&sr->nat, aux_value, ip_hdr->ip_src, mapping_type);
-                break;
-            }
+        {
+            puts("Packing outgoing through NAT\n");
+            if (unsupported_protocol) return REQUEST_DROP;
+            mapping = sr_nat_lookup_internal(&sr->nat, aux_value, ip_hdr->ip_src, mapping_type);
+            break;
+        }
         case not_traversing:
             puts("Packet not traversing NAT\n");
             /* We can safely allow any non-traversing packets to pass
