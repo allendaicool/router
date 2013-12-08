@@ -107,7 +107,6 @@ sr_traversal_direction sr_get_traversal_direction(sr_network_location src, sr_ne
 uint16_t cksum_tcp(sr_ip_hdr_t* ip_hdr, sr_tcp_hdr_t* tcp_hdr, unsigned int len) {
 
     tcp_hdr->cksum = 0;
-    /*
     void* blob = malloc(sizeof(sr_tcp_psuedo_hdr_t)+len);
     memcpy(blob,tcp_hdr,len);
 
@@ -116,12 +115,11 @@ uint16_t cksum_tcp(sr_ip_hdr_t* ip_hdr, sr_tcp_hdr_t* tcp_hdr, unsigned int len)
     psuedo->ip_src = ip_hdr->ip_src;
     psuedo->ip_src = ip_hdr->ip_src;
     psuedo->ip_tos = ip_hdr->ip_tos;
-    psuedo->tcp_len = len;
+    psuedo->tcp_len = htons(len);
 
     uint16_t cksum_val = cksum(blob,sizeof(sr_tcp_psuedo_hdr_t)+len);
     free(blob);
-    */
-    return htons(cksum(tcp_hdr,sizeof(sr_tcp_hdr_t)));
+    return htons(cksum_val);
 }
 
 /* Rewrite a packet with a given mapping, heading in a given direction */
