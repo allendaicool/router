@@ -179,6 +179,8 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
             mapping->ip_ext = ip_hdr->ip_dst;
             mapping->aux_ext = htons(sr->nat.aux_val);
             mapping->last_updated = time(NULL);
+            /* No connections to note as of yet */
+            mapping->conns = NULL;
 
             /* Generate a new aux value for the next mapping */
             sr->nat.aux_val = (sr->nat.aux_val + 1)%65535;
