@@ -166,7 +166,12 @@ void sr_rewrite_packet(struct sr_instance* sr, sr_ip_hdr_t* ip_hdr, unsigned int
         case ip_protocol_tcp:
         {
             sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
-            tcp_hdr->src_port = aux_value;
+            if (dir == incoming_pkt) {
+                tcp_hdr->dst_port = mapping->aux_int;
+            }
+            else if (dir == outgoing_pkt) {
+                tcp_hdr->src_port = mapping->aux_ext;
+            }
             tcp_hdr->cksum = cksum_tcp(ip_hdr,tcp_hdr,len-sizeof(sr_ip_hdr_t));
             break;
         }
