@@ -436,17 +436,17 @@ int sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int len
         free(temp);
     }
 
-    /* If we get here, there must be a mapping, so rewrite with it */
-
-    sr_rewrite_packet(sr,ip_hdr,len,mapping,dir);
-    free(mapping); /* Free the copy */
-
     /* Do the checking for TCP connection state changes in a concurrent-safe way */
 
     if (ip_hdr->ip_p == ip_protocol_tcp) {
         sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
         sr_tcp_note_connections(sr,ip_hdr,tcp_hdr,dir);
     }
+
+    /* If we get here, there must be a mapping, so rewrite with it */
+
+    sr_rewrite_packet(sr,ip_hdr,len,mapping,dir);
+    free(mapping); /* Free the copy */
 
     /* If we got here, we rewrote a packet successfully. Forward away. */
 
