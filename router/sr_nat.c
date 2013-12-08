@@ -145,9 +145,11 @@ void sr_rewrite_packet(struct sr_instance* sr, sr_ip_hdr_t* ip_hdr, unsigned int
         {
             sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
             if (dir == incoming_pkt) {
+                printf("Rewriting incoming packet to dst_port %i\n",ntohs(mapping->aux_int));
                 tcp_hdr->dst_port = mapping->aux_int;
             }
             else if (dir == outgoing_pkt) {
+                printf("Rewriting outgoing packet to src_port %i\n",ntohs(mapping->aux_ext));
                 tcp_hdr->src_port = mapping->aux_ext;
             }
             tcp_hdr->cksum = cksum_tcp(ip_hdr,tcp_hdr,len-sizeof(sr_ip_hdr_t));
