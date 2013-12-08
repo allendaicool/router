@@ -331,7 +331,9 @@ int sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int len
         if (mapping == NULL) {
             return REQUEST_DROP;
         }
-        printf("Mapping successfully created\n");
+        temp = ip_to_str(mapping->ip_int);
+        printf("Mapping successfully created: (%i, %s)\n",ntohs(mapping->aux_int),temp);
+        free(temp);
     }
 
     /* If we get here, there must be a mapping, so rewrite with it */
