@@ -114,7 +114,6 @@ void sr_rewrite_packet(struct sr_instance* sr, sr_ip_hdr_t* ip_hdr, unsigned int
     struct sr_if* my_interface = sr_get_interface(sr, "eth1");
     switch (dir) {
         case incoming_pkt:
-            ip_hdr->ip_src = my_interface->ip;
             ip_hdr->ip_dst = mapping->ip_int;
             aux_value = mapping->aux_int;
             break;
