@@ -108,10 +108,10 @@ uint16_t cksum_tcp(sr_ip_hdr_t* ip_hdr, sr_tcp_hdr_t* tcp_hdr, uint16_t len) {
 
     tcp_hdr->cksum = 0;
     void* blob = malloc(sizeof(sr_tcp_psuedo_hdr_t)+len);
-    memcpy(blob,tcp_hdr,len);
+    memset(blob,0,sizeof(sr_tcp_psuedo_hdr_t)+len);
 
+    memcpy(blob,tcp_hdr,len);
     sr_tcp_psuedo_hdr_t *psuedo = (sr_tcp_psuedo_hdr_t*)blob;
-    memset(psuedo,0,sizeof(sr_tcp_psuedo_hdr_t));
     psuedo->ip_src = ip_hdr->ip_src;
     psuedo->ip_src = ip_hdr->ip_src;
     psuedo->ip_tos = ip_hdr->ip_tos;
