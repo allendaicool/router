@@ -307,7 +307,7 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
         conn->ip_dst = ip_dst;
         conn->port_dst = port_dst;
         conn->next = mapping->conns;
-        mapping->conns = conn->next;
+        mapping->conns = conn;
     }
 
     /* Update the seen packet values for the connection */
