@@ -106,18 +106,20 @@ sr_traversal_direction sr_get_traversal_direction(sr_network_location src, sr_ne
 
 uint16_t cksum_tcp(sr_ip_hdr_t* ip_hdr, sr_tcp_hdr_t* tcp_hdr, uint16_t len) {
 
-    tcp_hdr->cksum = 0;
-    void* blob = malloc(sizeof(sr_tcp_psuedo_hdr_t)+len);
-    memset(blob,0,sizeof(sr_tcp_psuedo_hdr_t)+len);
+    size_t bloblen = sizeof(sr_tcp_psuedo_hdr_t)+len;
 
-    memcpy(blob,tcp_hdr,len);
+    tcp_hdr->cksum = 0;
+    void* blob = malloc(bloblen);
+    memset(blob,0,bloblen);
+
+    memcpy(blob+sizeof(sr_tcp_psuedo_hdr_t),tcp_hdr,len);
     sr_tcp_psuedo_hdr_t *psuedo = (sr_tcp_psuedo_hdr_t*)blob;
     psuedo->ip_src = ip_hdr->ip_src;
     psuedo->ip_dst = ip_hdr->ip_dst;
     psuedo->ip_tos = ip_hdr->ip_tos;
     psuedo->tcp_len = htons(len);
 
-    uint16_t cksum_val = cksum(blob,sizeof(sr_tcp_psuedo_hdr_t)+len);
+    uint16_t cksum_val = cksum(blob,bloblen);
     free(blob);
     return htons(cksum_val);
 }
