@@ -390,8 +390,7 @@ struct sr_nat_mapping *sr_nat_lookup_external(struct sr_nat *nat,
 
 /* Get the mapping associated with given internal (ip, port) pair.
    You must free the returned structure if it is not NULL. */
-struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
-  uint32_t ip_int, uint16_t aux_int, sr_nat_mapping_type type ) {
+struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat, uint16_t aux_int, uint32_t ip_int,  sr_nat_mapping_type type ) {
 
   pthread_mutex_lock(&(nat->lock));
 
