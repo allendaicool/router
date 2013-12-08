@@ -214,7 +214,7 @@ int sr_nat_rewrite_ip_packet(void* sr_pointer, uint8_t* packet, unsigned int len
     switch (ip_hdr->ip_p) {
         case ip_protocol_icmp:
             {
-                sr_icmp_hdr_t *icmp = 0; /*(sr_icmp_hdr_t*)(packet+sizeof(sr_ip_hdr_t));*/
+                sr_icmp_hdr_t *icmp = (sr_icmp_hdr_t*)(packet+sizeof(sr_ip_hdr_t));
                 aux_value = icmp->icmp_identifier;
                 mapping_type = nat_mapping_icmp;
                 break;
