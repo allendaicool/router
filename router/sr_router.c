@@ -85,7 +85,7 @@ void sr_handlepacket(struct sr_instance* sr,
     /* printf("*** -> Received packet of length %d \n",len); */
 
     if (len < sizeof(sr_ethernet_hdr_t)) {
-        /* /* puts("Packet is smaller than an ethernet header. Discarding."); */ */
+        /* puts("Packet is smaller than an ethernet header. Discarding."); */
         return;
     }
 
@@ -130,14 +130,14 @@ void sr_handlepacket_arp(struct sr_instance* sr,
         unsigned int len,
         char* interface/* lent */)
 {
-    /* /* puts("handling ARP header"); */ */
+    /* puts("handling ARP header"); */
     sr_arp_hdr_t *arp_hdr;
 
     /* REQUIRES */
     assert(packet);
 
     if (len < sizeof(sr_arp_hdr_t)) {
-        /* /* puts("Ethernet payload (claiming to contain ARP) is smaller than ARP header. Discarding."); */ */
+        /* puts("Ethernet payload (claiming to contain ARP) is smaller than ARP header. Discarding."); */
         return;
     }
 
@@ -157,87 +157,91 @@ void sr_handlepacket_arp(struct sr_instance* sr,
          */
 
         case arp_op_request:
-            /* /* puts("received ARP OP request."); */ */
+            {
+                /* puts("received ARP OP request."); */
 
-            /* The VNS transport layer shouldn't allow any ARP packets that aren't for our
-             * interface, but it's still worth checking, just in case something goes wrong
-             * or *gasp* we write a unit test about it */
+                /* The VNS transport layer shouldn't allow any ARP packets that aren't for our
+                 * interface, but it's still worth checking, just in case something goes wrong
+                 * or *gasp* we write a unit test about it */
 
-            struct sr_if* iface = sr_get_interface(sr, interface);
-            if (iface->ip == arp_hdr->ar_tip) {
+                struct sr_if* iface = sr_get_interface(sr, interface);
+                if (iface->ip == arp_hdr->ar_tip) {
 
-                /* Flip around the source and destination IP, keeping both in network order */
+                    /* Flip around the source and destination IP, keeping both in network order */
 
-                uint32_t ip_buf = arp_hdr->ar_tip;
-                arp_hdr->ar_tip = arp_hdr->ar_sip;
-                arp_hdr->ar_sip = ip_buf;
+                    uint32_t ip_buf = arp_hdr->ar_tip;
+                    arp_hdr->ar_tip = arp_hdr->ar_sip;
+                    arp_hdr->ar_sip = ip_buf;
 
-                /* Flip around source and dest MAC on the ETH header */
+                    /* Flip around source and dest MAC on the ETH header */
 
-                uint8_t ether_buf[ETHER_ADDR_LEN];
-                memcpy(ether_buf,eth_hdr->ether_shost,ETHER_ADDR_LEN);
-                memcpy(eth_hdr->ether_shost,iface->addr,ETHER_ADDR_LEN);
-                memcpy(eth_hdr->ether_dhost,ether_buf,ETHER_ADDR_LEN);
+                    uint8_t ether_buf[ETHER_ADDR_LEN];
+                    memcpy(ether_buf,eth_hdr->ether_shost,ETHER_ADDR_LEN);
+                    memcpy(eth_hdr->ether_shost,iface->addr,ETHER_ADDR_LEN);
+                    memcpy(eth_hdr->ether_dhost,ether_buf,ETHER_ADDR_LEN);
 
-                /* Flip around eth on ARP header */
+                    /* Flip around eth on ARP header */
 
-                memcpy(ether_buf,arp_hdr->ar_sha,ETHER_ADDR_LEN);
-                memcpy(arp_hdr->ar_sha,iface->addr,ETHER_ADDR_LEN);
-                memcpy(arp_hdr->ar_tha,ether_buf,ETHER_ADDR_LEN);
+                    memcpy(ether_buf,arp_hdr->ar_sha,ETHER_ADDR_LEN);
+                    memcpy(arp_hdr->ar_sha,iface->addr,ETHER_ADDR_LEN);
+                    memcpy(arp_hdr->ar_tha,ether_buf,ETHER_ADDR_LEN);
 
-                /* Change ARP operation to a reply */
+                    /* Change ARP operation to a reply */
 
-                arp_hdr->ar_op = htons(arp_op_reply);
+                    arp_hdr->ar_op = htons(arp_op_reply);
 
-                /* Send the modified packet back out */
+                    /* Send the modified packet back out */
 
-                /* puts("sending ARP OP reply"); */
-                sr_send_packet(sr, (uint8_t*)eth_hdr, len + sizeof(sr_ethernet_hdr_t), interface);
+                    /* puts("sending ARP OP reply"); */
+                    sr_send_packet(sr, (uint8_t*)eth_hdr, len + sizeof(sr_ethernet_hdr_t), interface);
+                }
+                else {
+                    /* puts("ARP request received that's not for us."); */
+                }
+
+                break;
             }
-            else {
-                /* puts("ARP request received that's not for us."); */
-            }
-
-            break;
 
         /*
          * ARP Reply handling
          */
 
         case arp_op_reply:
-            /* puts("received ARP OP reply."); */
+            {
+                /* puts("received ARP OP reply."); */
 
-            /* Insert the new IP->MAC mapping into the cache, using network endianness for IP */
+                /* Insert the new IP->MAC mapping into the cache, using network endianness for IP */
 
-            struct sr_arpreq* req = sr_arpcache_insert(&(sr->cache),eth_hdr->ether_shost,arp_hdr->ar_sip);
+                struct sr_arpreq* req = sr_arpcache_insert(&(sr->cache),eth_hdr->ether_shost,arp_hdr->ar_sip);
 
-            /* If there were requests waiting on this mapping */
+                /* If there were requests waiting on this mapping */
 
-            if (req) {
-                struct sr_packet* packet_walker = req->packets;
-                while (packet_walker) {
+                if (req) {
+                    struct sr_packet* packet_walker = req->packets;
+                    while (packet_walker) {
 
-                    /* Send the packet, which will do the lookup against the ARP table we just filled with the answer */
+                        /* Send the packet, which will do the lookup against the ARP table we just filled with the answer */
 
-                    sr_try_send_ip_packet(sr, packet_walker->ip_dst, packet_walker->ip_src, packet_walker->payload, packet_walker->ip_hdr);
+                        sr_try_send_ip_packet(sr, packet_walker->ip_dst, packet_walker->ip_src, packet_walker->payload, packet_walker->ip_hdr);
 
-                    /* Remove the reference to the packet on this buffered request */
+                        /* Remove the reference to the packet on this buffered request */
 
-                    packet_walker->payload = NULL;
-                    
-                    /* Continue walking the linked list */
+                        packet_walker->payload = NULL;
+                        
+                        /* Continue walking the linked list */
 
-                    packet_walker = packet_walker->next;
+                        packet_walker = packet_walker->next;
+                    }
+
+                    /* Free the memory associated with these requests */
+
+                    sr_arpreq_destroy(&(sr->cache),req);
                 }
-
-                /* Free the memory associated with these requests */
-
-                sr_arpreq_destroy(&(sr->cache),req);
+                else {
+                    /* puts("no cached requests waiting on this ARP."); */
+                }
+                break;
             }
-            else {
-                /* puts("no cached requests waiting on this ARP."); */
-            }
-            break;
     }
 }
 
