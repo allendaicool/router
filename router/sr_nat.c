@@ -305,7 +305,7 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
     /* Create a connection if there isn't one already */
 
     if (conn == NULL) {
-        printf("Didn't find a connection, so we're creating a new one");
+        printf("Didn't find a connection, so we're creating a new one\n");
         conn = malloc(sizeof(struct sr_nat_connection));
         memset(conn,0,sizeof(struct sr_nat_connection));
         conn->ip_dst = ip_dst;
@@ -351,6 +351,9 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
         }
     }
     printf("--------------\nSTATUS:\n");
+    char* temp_mapping = ip_to_str(conn->ip_dst);
+    printf("Connection mapping (%i, %s)\n",ntohs(conn->port_dst),temp_mapping);
+    free(temp_mapping);
     printf("Seen internal syn %i\n",ntohs(conn->seen_internal_syn));
     printf("Seen external syn %i\n",ntohs(conn->seen_external_syn));
     printf("Seen internal fin %i\n",ntohs(conn->seen_internal_fin));
