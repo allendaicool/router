@@ -123,7 +123,7 @@ uint16_t cksum_tcp(sr_ip_hdr_t* ip_hdr, sr_tcp_hdr_t* tcp_hdr, uint16_t len) {
 
     uint16_t cksum_val = cksum(blob,bloblen);
     free(blob);
-    return htons(cksum_val);
+    return cksum_val;
 }
 
 /* Rewrite a packet with a given mapping, heading in a given direction */
