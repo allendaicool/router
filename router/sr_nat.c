@@ -369,7 +369,7 @@ struct sr_nat_mapping *sr_nat_lookup_external(struct sr_nat *nat,
 
   struct sr_nat_mapping *mapping_walker = nat->mappings;
   while (mapping_walker != NULL) {
-      printf("Checking mapping with aux_ext %i, for %i observed.\n",mapping_walker->aux_ext,aux_ext);
+      printf("Mapping (%i), Observed (%i).\n",ntohs(mapping_walker->aux_ext),ntohs(aux_ext));
       if (mapping_walker->aux_ext == aux_ext) {
           copy = memdup(mapping_walker,sizeof(struct sr_nat_mapping));
           break;
@@ -396,7 +396,7 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
       char* temp_mapping = ip_to_str(mapping_walker->ip_int);
       char* temp_test = ip_to_str(ip_int);
 
-      printf("Checking mapping with (%i, %s) for (%i, %s) observed.\n",mapping_walker->aux_int,temp_mapping,aux_int,temp_test);
+      printf("Mapping (%i, %s), Observed (%i, %s).\n",noths(mapping_walker->aux_int),temp_mapping,ntohs(aux_int),temp_test);
       if (mapping_walker->aux_int == aux_int && mapping_walker->ip_int == ip_int) {
           copy = memdup(mapping_walker,sizeof(struct sr_nat_mapping));
           break;
