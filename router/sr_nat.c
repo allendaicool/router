@@ -114,7 +114,7 @@ uint16_t cksum_tcp(sr_ip_hdr_t* ip_hdr, sr_tcp_hdr_t* tcp_hdr, uint16_t len) {
     sr_tcp_psuedo_hdr_t *psuedo = (sr_tcp_psuedo_hdr_t*)blob;
     psuedo->ip_src = ip_hdr->ip_src;
     psuedo->ip_src = ip_hdr->ip_src;
-    psuedo->ip_tos = ip_hdr->ip_tos;
+    psuedo->ip_tos = 6;
     psuedo->tcp_len = htons(len);
 
     uint16_t cksum_val = cksum(blob,sizeof(sr_tcp_psuedo_hdr_t)+len);
