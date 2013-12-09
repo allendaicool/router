@@ -638,6 +638,8 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
         if (freemap != NULL) free(freemap);
     }
 
+    printf("Fell through while loop\n");
+
     /* Timeout unsolicited SYN packets */
 
     struct sr_tcp_incoming *incoming = nat->incoming;
