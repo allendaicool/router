@@ -192,6 +192,7 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
             mapping->ip_ext = ip_hdr->ip_dst;
             mapping->aux_ext = htons(sr->nat.aux_val);
             mapping->last_updated = time(NULL);
+            mapping->type = mapping_type;
             /* No connections to note as of yet */
             mapping->conns = NULL;
 
@@ -567,7 +568,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
             printf("ICMP mapping\n");
             if (seconds > 5) timedout = 1;
         }
-        if (mapping->type == nat_mapping_tcp) {
+        else if (mapping->type == nat_mapping_tcp) {
             printf("TCP mapping\n");
 
             /*struct sr_nat_connection *conn = mapping->conns;
@@ -612,6 +613,9 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
                 if (freebuf != NULL) free(freebuf);
             }
             if (mapping->conns == NULL) timedout = 1;*/
+        }
+        else {
+            printf("Mapping type unrecognized\n");
         }
 
         struct sr_nat_mapping *mapping = nat->mapping;
