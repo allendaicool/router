@@ -571,7 +571,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
         else if (mapping->type == nat_mapping_tcp) {
             printf("TCP mapping\n");
 
-            /*struct sr_nat_connection *conn = mapping->conns;
+            struct sr_nat_connection *conn = mapping->conns;
             while (conn != NULL) {
                 int transitory = 1;
                 if (conn->seen_external_syn && conn->seen_internal_syn) {
@@ -612,7 +612,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
                 conn = conn->next;
                 if (freebuf != NULL) free(freebuf);
             }
-            if (mapping->conns == NULL) timedout = 1;*/
+            if (mapping->conns == NULL) timedout = 1;
         }
         else {
             printf("Mapping type unrecognized\n");
@@ -634,8 +634,6 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
         mapping = mapping->next;
         if (freemap != NULL) free(freemap);
     }
-
-    printf("Fell through while loop\n");
 
     /* Timeout unsolicited SYN packets */
 
