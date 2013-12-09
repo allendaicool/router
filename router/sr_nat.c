@@ -618,7 +618,8 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
             printf("Mapping type unrecognized\n");
         }
 
-        struct sr_nat_mapping *mapping = nat->mapping;
+        struct sr_nat_mapping *freemap = NULL;
+        struct sr_nat_mapping *mapping = nat->mappings;
         if (timedout) {
             if (mapping->next) {
                 mapping->next->prev = mapping->prev;
@@ -629,8 +630,10 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
             if (mapping->prev == NULL) {
                 nat->mappings = mapping->next;
             }
+            freemap = mapping;
         }
         mapping = mapping->next;
+        if (freemap != NULL) free(freemap);
     }
 
     /* Timeout unsolicited SYN packets */
