@@ -346,6 +346,9 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
         conn->prev = NULL;
     }
 
+    /* Update the time used */
+    conn->last_updated = time(NULL);
+
     /* Update the seen packet values for the connection */
 
     if (dir == incoming_pkt) {
