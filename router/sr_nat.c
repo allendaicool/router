@@ -392,7 +392,7 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
         if (conn->seen_internal_fin) {
             printf("Checking ackno (%u) > internal fin seqno (%u)\n",ntohl(tcp_hdr->ackno),ntohl(conn->seen_internal_fin));
             if (ntohl(tcp_hdr->ackno) > ntohl(conn->seen_internal_fin)) {
-                conn->seen_external_fin_ack = 1;
+                /*conn->seen_external_fin_ack = 1;*/
                 puts("SAW EXTERNAL FIN-ACK");
             }
         }
