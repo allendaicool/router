@@ -236,8 +236,10 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
                             new_incoming->syn_arrived = time(NULL);
 
                             /* Insert into the linked list */
+                            if (sr->nat.incoming) sr->nat.incoming->prev = new_incoming;
                             new_incoming->next = sr->nat.incoming;
                             sr->nat.incoming = new_incoming;
+                            new_incoming->prev = NULL;
                         }
                         else printf("SYN already registered\n");
                     }
@@ -560,7 +562,19 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
     struct sr_tcp_incoming *incoming = nat->incoming;
     while (incoming != NULL) {
         double seconds = difftime(curtime,incoming->syn_arrived);
-        printf("Seconds since incoming was updated %f\n",seconds);
+        printf("Seconds since incoming SYN was received %f\n",seconds);
+        if (seconds >= 5) {
+            printf("Removing SYN and sending ICMP error");
+            if (incoming->next) {
+                incoming->next->prev = incoming->prev;
+            }
+            if (incoming->prev) {
+                incoming->prev->next = incoming->next;
+            }
+            if (incoming->prev == NULL) {
+                nat->incoming = incoming->next;
+            }
+        }
         incoming = incoming->next;
     }
 
