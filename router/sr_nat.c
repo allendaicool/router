@@ -589,13 +589,13 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
     /* Timeout mappings */
 
     struct sr_nat_mapping *mapping = nat->mappings;
+    printf("ICMP timeout %i\n",nat->icmp_query_timeout);
+    printf("TCP transitory timeout %i\n",nat->tcp_transitory_timeout);
+    printf("TCP established timeout %i\n",nat->tcp_established_timeout);
     if (mapping == NULL) printf("No mappings to time out\n");
     while (mapping != NULL) {
         double seconds = difftime(curtime,mapping->last_updated);
         printf("Seconds since mapping was updated %f\n",seconds);
-        printf("ICMP timeout %i\n",nat->icmp_query_timeout);
-        printf("TCP transitory timeout %i\n",nat->tcp_transitory_timeout);
-        printf("TCP established timeout %i\n",nat->tcp_established_timeout);
 
         int timedout = 0;
         if (mapping->type == nat_mapping_icmp) {
