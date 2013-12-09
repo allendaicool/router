@@ -577,7 +577,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
                 /* Timeout each connection seperately for TCP */
 
                 struct sr_nat_connection *conn = mapping->conns;
-                while (conn != NULL) {
+                /*while (conn != NULL) {*/
                     int transitory = 1;
                     if (conn->seen_external_syn && conn->seen_internal_syn) {
                         transitory = 0;
@@ -620,13 +620,14 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
                     }
                     conn = conn->next;
                     if (freebuf != NULL) free(freebuf);
-                }
+                /*}*/
                 /* If all our connections are gone, timeout the mapping */
                 if (mapping->conns == NULL) timedout = 1;
                 break;
             }
         }
 
+        struct sr_nat_mapping *mapping = nat->mapping;
         if (timedout) {
             if (mapping->next) {
                 mapping->next->prev = mapping->prev;
