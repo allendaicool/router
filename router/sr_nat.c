@@ -180,6 +180,7 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
                 sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
                 if (!(tcp_hdr->flags & TCP_SYN_FLAG)) {
                     puts("bad TCP packet detected");
+                    pthread_mutex_unlock(&(sr->nat.lock));
                     return NULL;
                 }
             }
@@ -546,6 +547,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
   struct sr_nat *nat = (struct sr_nat *)nat_ptr;
   while (1) {
     sleep(1.0);
+    printf("Attempting to lock mutex\n");
     pthread_mutex_lock(&(nat->lock));
 
     time_t curtime = time(NULL);
