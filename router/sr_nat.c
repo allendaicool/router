@@ -581,6 +581,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
                         transitory = 1;
                     }
                     double seconds = difftime(curtime,conn->last_updated);
+                    printf("-> seconds since connection was updated %f\n",seconds);
 
                     /* timeout connection */
 
