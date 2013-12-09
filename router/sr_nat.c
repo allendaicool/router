@@ -403,13 +403,13 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
             printf("SAW INTERNAL SYN %u\n",ntohl(tcp_hdr->seqno));
         }
         if (!conn->seen_internal_fin && (tcp_hdr->flags & TCP_FIN_FLAG)) {
-            /*conn->seen_internal_fin = tcp_hdr->seqno;*/
+            conn->seen_internal_fin = tcp_hdr->seqno;
             printf("SAW INTERNAL FIN %u\n",ntohl(tcp_hdr->seqno));
         }
         if (conn->seen_external_fin) {
             printf("Checking ackno (%u) > external fin seqno (%u)\n",ntohl(tcp_hdr->ackno),ntohl(conn->seen_external_fin));
             if (ntohl(tcp_hdr->ackno) > ntohl(conn->seen_external_fin)) {
-                conn->seen_internal_fin_ack = 1;
+                /*conn->seen_internal_fin_ack = 1;*/
                 puts("SAW INTERNAL FIN-ACK");
             }
         }
