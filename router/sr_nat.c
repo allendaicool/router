@@ -563,12 +563,15 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
         switch (mapping->type) {
             case nat_mapping_icmp:
             {
+                printf("ICMP mapping\n");
+
                 if (seconds > 5) timedout = 1;
                 break;
             }
             case nat_mapping_tcp:
             {
 
+                printf("TCP mapping\n");
                 /* Timeout each connection seperately for TCP */
 
                 struct sr_nat_connection *conn = mapping->conns;
