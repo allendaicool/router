@@ -351,8 +351,11 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
         while (incoming != NULL) {
             struct sr_tcp_incoming *freebuf = NULL;
             /* Matches will match on IP and port */
+            char* ip_dst_str = ip_to_str(ip_dst);
+            char* incoming_str = ip_to_str(incoming->ip_ext);
+            printf("Checking if incoming (%s,%i) == mapping (%s,%i)\n",ip_dst_str,ntohs(port_dst),incoming_str,ntohs(incoming->aux_ext));
             if ((incoming->ip_ext == ip_dst) && (incoming->aux_ext == port_dst)) {
-                printf("Found unsolicited SYN matching this description, deleting it\n");
+                printf(" ===== Found unsolicited SYN matching this description, deleting it\n");
                 if (incoming->next) {
                     incoming->next->prev = incoming->prev;
                 }
