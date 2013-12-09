@@ -187,7 +187,7 @@ int main(int argc, char **argv)
     /* setup timeout values */
     if (use_nat) {
         sr.nat.icmp_query_timeout = icmp_query_timeout;
-        sr.nat.tcp_established_timeout = icmp_query_timeout;
+        sr.nat.tcp_established_timeout = tcp_established_timeout;
         sr.nat.tcp_transitory_timeout = tcp_transitory_timeout;
     }
 
