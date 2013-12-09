@@ -111,8 +111,8 @@ void sr_rewrite_packet(struct sr_instance* sr, sr_ip_hdr_t* ip_hdr, unsigned int
 
     /* Either protocol, we need to rewrite the src IP and redo IP cksum, so do that first */
     uint16_t aux_value = 0;
-    /* Get an IP address to use for translation. We know eth2 will exist, so use that one */
-    struct sr_if* my_interface = sr_get_interface(sr, "eth2");
+    /* Get an IP address to use for translation. We want anything but eth1 */
+    struct sr_if* my_interface = sr_get_interface_not_name(sr, "eth1");
     switch (dir) {
         case incoming_pkt:
             ip_hdr->ip_dst = mapping->ip_int;
@@ -358,7 +358,7 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
             free(incoming_str);
 
             if ((incoming->ip_ext == ip_dst) && (incoming->aux_ext == mapping->aux_ext)) {
-                printf(" ===== Found unsolicited SYN matching this description, deleting it\n");
+                printf("Found unsolicited SYN matching this description, deleting it\n");
                 if (incoming->next) {
                     incoming->next->prev = incoming->prev;
                 }

@@ -53,6 +53,25 @@ struct sr_if* sr_get_interface(struct sr_instance* sr, const char* name)
     return 0;
 } /* -- sr_get_interface -- */
 
+struct sr_if* sr_get_interface_not_name(struct sr_instance* sr, const char* name)
+{
+    struct sr_if* if_walker = 0;
+
+    /* -- REQUIRES -- */
+    assert(name);
+    assert(sr);
+
+    if_walker = sr->if_list;
+
+    while(if_walker)
+    {
+        if (strncmp(if_walker->name,name,sr_IFACE_NAMELEN)) { return if_walker; }
+        if_walker = if_walker->next;
+    }
+
+    return 0;
+} /* -- sr_get_interface -- */
+
 /*--------------------------------------------------------------------- 
  * Method: sr_get_interface_ip
  * Scope: Global
