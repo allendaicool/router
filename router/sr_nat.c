@@ -392,6 +392,7 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
     /* If we've seen both fin_ack's, then close up shop */
 
     if ((conn->seen_internal_fin_ack && conn->seen_external_fin_ack) || (tcp_hdr->flags & TCP_RST_FLAG)) {
+        if (tcp_hdr->flags & TCP_RST_FLAG) printf("RST packet seen\n");
         printf("CLOSING CONNECTION\n");
         if (conn->prev) {
             conn->prev->next = conn->next;
