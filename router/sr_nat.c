@@ -239,6 +239,7 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
                             new_incoming->next = sr->nat.incoming;
                             sr->nat.incoming = new_incoming;
                         }
+                        else printf("SYN already registered\n");
                     }
                     break;
                 }
