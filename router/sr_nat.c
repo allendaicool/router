@@ -632,6 +632,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
             }
             freemap = mapping;
         }
+        printf("Mapping %x, Mapping->next %x\n",mapping,mapping->next);
         mapping = mapping->next;
         if (freemap != NULL) free(freemap);
     }
