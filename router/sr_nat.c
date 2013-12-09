@@ -560,6 +560,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
     struct sr_nat_mapping *mapping = nat->mappings;
     if (mapping == NULL) printf("No mappings to time out\n");
     while (mapping != NULL) {
+        printf("Mapping at start of loop %x\n",mapping);
         double seconds = difftime(curtime,mapping->last_updated);
         printf("Seconds since mapping was updated %f\n",seconds);
 
