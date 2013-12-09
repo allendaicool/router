@@ -74,9 +74,9 @@ int main(int argc, char **argv)
     struct sr_instance sr;
     int use_nat = 0;
 
-    int icmp_query_timeout;
-    int tcp_established_timeout;
-    int tcp_transitory_timeout;
+    int icmp_query_timeout = 60;
+    int tcp_established_timeout = 7440;
+    int tcp_transitory_timeout = 300;
 
     printf("Using %s\n", VERSION_INFO);
 
