@@ -354,6 +354,9 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
             char* ip_dst_str = ip_to_str(ip_dst);
             char* incoming_str = ip_to_str(incoming->ip_ext);
             printf("Checking if incoming (%s,%i) == mapping (%s,%i)\n",ip_dst_str,ntohs(port_dst),incoming_str,ntohs(incoming->aux_ext));
+            free(ip_dst_str);
+            free(incoming_str);
+
             if ((incoming->ip_ext == ip_dst) && (incoming->aux_ext == port_dst)) {
                 printf(" ===== Found unsolicited SYN matching this description, deleting it\n");
                 if (incoming->next) {
