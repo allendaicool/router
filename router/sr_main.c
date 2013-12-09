@@ -74,9 +74,13 @@ int main(int argc, char **argv)
     struct sr_instance sr;
     int use_nat = 0;
 
+    int icmp_query_timeout;
+    int tcp_established_timeout;
+    int tcp_transitory_timeout;
+
     printf("Using %s\n", VERSION_INFO);
 
-    while ((c = getopt(argc, argv, "hs:v:p:u:t:r:l:T:ns:")) != EOF)
+    while ((c = getopt(argc, argv, "hs:v:p:u:t:r:l:T:ns:I:E:R:")) != EOF)
     {
         switch (c)
         {
@@ -110,6 +114,15 @@ int main(int argc, char **argv)
                 break;
             case 'n':
                 use_nat = 1;
+                break;
+            case 'I':
+                icmp_query_timeout = atoi(optarg);
+                break;
+            case 'E':
+                tcp_established_timeout = atoi(optarg);
+                break;
+            case 'R':
+                tcp_transitory_timeout = atoi(optarg);
                 break;
         } /* switch */
     } /* -- while -- */
@@ -170,6 +183,13 @@ int main(int argc, char **argv)
 
     /* call router init (for arp subsystem etc.) */
     sr_init(&sr);
+
+    /* setup timeout values */
+    if (use_nat) {
+        sr.nat.icmp_query_timeout = icmp_query_timeout;
+        sr.nat.tcp_established_timeout = icmp_query_timeout;
+        sr.nat.tcp_transitory_timeout = tcp_transitory_timeout;
+    }
 
     /* -- whizbang main loop ;-) */
     while( sr_read_from_server(&sr) == 1);

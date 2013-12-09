@@ -71,6 +71,10 @@ struct sr_nat {
     uint16_t aux_val;
     struct sr_instance *sr;
 
+    int icmp_query_timeout;
+    int tcp_established_timeout;
+    int tcp_transitory_timeout;
+
     /* threading */
     pthread_mutex_t lock;
     pthread_mutexattr_t attr;

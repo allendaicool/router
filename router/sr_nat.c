@@ -344,6 +344,29 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
         conn->next = mapping->conns;
         mapping->conns = conn;
         conn->prev = NULL;
+
+        /* Look through outstanding unsolicited syns, so we can delete any that match this description */
+
+        struct sr_tcp_incoming *incoming = sr->nat.incoming;
+        while (incoming != NULL) {
+            struct sr_tcp_incoming *freebuf = NULL;
+            /* Matches will match on IP and port */
+            if ((incoming->ip_ext == ip_dst) && (incoming->aux_ext == port_dst)) {
+                printf("Found unsolicited SYN matching this description, deleting it\n");
+                if (incoming->next) {
+                    incoming->next->prev = incoming->prev;
+                }
+                if (incoming->prev) {
+                    incoming->prev->next = incoming->next;
+                }
+                if (incoming->prev == NULL) {
+                    sr->nat.incoming = incoming->next;
+                }
+                freebuf = incoming;
+            }
+            incoming = incoming->next;
+            if (freebuf != NULL) free(freebuf);
+        }
     }
 
     /* Update the time used */
@@ -568,7 +591,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
         int timedout = 0;
         if (mapping->type == nat_mapping_icmp) {
             printf("ICMP mapping\n");
-            if (seconds > 5) timedout = 1;
+            if (seconds >= nat->icmp_query_timeout) timedout = 1;
         }
         else if (mapping->type == nat_mapping_tcp) {
             printf("TCP mapping\n");
@@ -594,12 +617,12 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
                 int conn_timedout = 0;
 
                 if (transitory) {
-                    if (seconds > 2) {
+                    if (seconds >= nat->tcp_transitory_timeout) {
                         conn_timedout = 1;
                     }
                 }
                 if (!transitory) {
-                    if (seconds > 10) {
+                    if (seconds >= nat->tcp_established_timeout) {
                         conn_timedout = 1;
                     }
                 }
@@ -650,7 +673,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
         double seconds = difftime(curtime,incoming->syn_arrived);
         printf("Seconds since incoming SYN was received %f\n",seconds);
         struct sr_tcp_incoming *freebuf = NULL;
-        if (seconds >= 5) {
+        if (seconds >= 500) {
             printf("Removing SYN and sending ICMP error\n");
 
             /* Send the ICMP */
