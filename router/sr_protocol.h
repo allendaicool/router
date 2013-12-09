@@ -128,6 +128,7 @@ struct sr_icmp_t3_hdr {
 } __attribute__ ((packed)) ;
 typedef struct sr_icmp_t3_hdr sr_icmp_t3_hdr_t;
 
+#define TCP_RST_FLAG 0x04
 #define TCP_SYN_FLAG 0x02
 #define TCP_FIN_FLAG 0x01
 

@@ -110,8 +110,8 @@ void sr_rewrite_packet(struct sr_instance* sr, sr_ip_hdr_t* ip_hdr, unsigned int
 
     /* Either protocol, we need to rewrite the src IP and redo IP cksum, so do that first */
     uint16_t aux_value = 0;
-    /* Get an IP address to use for translation. We know eth1 will exist, so use that one */
-    struct sr_if* my_interface = sr_get_interface(sr, "eth1");
+    /* Get an IP address to use for translation. We know eth2 will exist, so use that one */
+    struct sr_if* my_interface = sr_get_interface(sr, "eth2");
     switch (dir) {
         case incoming_pkt:
             ip_hdr->ip_dst = mapping->ip_int;
@@ -174,6 +174,15 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
     switch (dir) {
         case outgoing_pkt:
 
+            /* This implies a bad TCP stream */
+            if (mapping_type == nat_mapping_tcp) {
+                sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
+                if (!(tcp_hdr->flags & TCP_SYN_FLAG)) {
+                    puts("bad TCP packet detected");
+                    return NULL;
+                }
+            }
+
             /* We can just go ahead and create all outgoing requests that don't already exist */
             mapping = malloc(sizeof(struct sr_nat_mapping));
             mapping->ip_int = ip_hdr->ip_src;
@@ -212,14 +221,23 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
                     sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
                     if (tcp_hdr->flags & TCP_SYN_FLAG) {
                         printf("Unsolicited inbound SYN detected\n");
-                        struct sr_tcp_incoming *new_incoming = (struct sr_tcp_incoming*)malloc(sizeof(struct sr_tcp_incoming));
-                        new_incoming->ip_ext = ip_hdr->ip_src;
-                        new_incoming->aux_ext = aux_value;
-                        new_incoming->syn_arrived = time(NULL);
 
-                        /* Insert into the linked list */
-                        new_incoming->next = sr->nat.incoming;
-                        sr->nat.incoming = new_incoming;
+                        struct sr_tcp_incoming *incomings = sr->nat.incoming;
+                        while (incomings != NULL) {
+                            if ((incomings->ip_ext == ip_hdr->ip_src) && (incomings->aux_ext == aux_value)) break;
+                            incomings = incomings->next;
+                        }
+
+                        if (incomings == NULL) {
+                            struct sr_tcp_incoming *new_incoming = (struct sr_tcp_incoming*)malloc(sizeof(struct sr_tcp_incoming));
+                            new_incoming->ip_ext = ip_hdr->ip_src;
+                            new_incoming->aux_ext = aux_value;
+                            new_incoming->syn_arrived = time(NULL);
+
+                            /* Insert into the linked list */
+                            new_incoming->next = sr->nat.incoming;
+                            sr->nat.incoming = new_incoming;
+                        }
                     }
                     break;
                 }
@@ -371,7 +389,7 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
 
     /* If we've seen both fin_ack's, then close up shop */
 
-    if (conn->seen_internal_fin_ack && conn->seen_external_fin_ack) {
+    if ((conn->seen_internal_fin_ack && conn->seen_external_fin_ack) || (tcp_hdr->flags & TCP_RST_FLAG)) {
         printf("CLOSING CONNECTION\n");
         if (conn->prev) {
             conn->prev->next = conn->next;
@@ -526,7 +544,22 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
 
     time_t curtime = time(NULL);
 
+    struct sr_nat *nat = (struct sr_nat*)nat_ptr;
+
     /* handle periodic tasks here */
+    struct sr_nat_mapping *mapping = nat->mappings;
+    while (mapping != NULL) {
+        double seconds = difftime(curtime,mapping->last_updated);
+        printf("Seconds since mapping was updated %f\n",seconds);
+        mapping = mapping->next;
+    }
+
+    struct sr_tcp_incoming *incoming = nat->incoming;
+    while (incoming != NULL) {
+        double seconds = difftime(curtime,incoming->syn_arrived);
+        printf("Seconds since incoming was updated %f\n",seconds);
+        incoming = incoming->next;
+    }
 
     pthread_mutex_unlock(&(nat->lock));
   }
@@ -547,6 +580,7 @@ struct sr_nat_mapping *sr_nat_lookup_external(struct sr_nat *nat,
   while (mapping_walker != NULL) {
       printf("Mapping (%i), Observed (%i).\n",ntohs(mapping_walker->aux_ext),ntohs(aux_ext));
       if (mapping_walker->aux_ext == aux_ext) {
+          mapping_walker->last_updated = time(NULL);
           copy = memdup(mapping_walker,sizeof(struct sr_nat_mapping));
           break;
       }
@@ -576,6 +610,7 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
       free(temp_test);
 
       if (mapping_walker->aux_int == aux_int && mapping_walker->ip_int == ip_int) {
+          mapping_walker->last_updated = time(NULL);
           copy = memdup(mapping_walker,sizeof(struct sr_nat_mapping));
           break;
       }
@@ -584,19 +619,4 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
 
   pthread_mutex_unlock(&(nat->lock));
   return copy;
-}
-
-/* Insert a new mapping into the nat's mapping table.
-   Actually returns a copy to the new mapping, for thread safety.
- */
-struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
-  uint32_t ip_int, uint16_t aux_int, sr_nat_mapping_type type ) {
-
-  pthread_mutex_lock(&(nat->lock));
-
-  /* handle insert here, create a mapping, and then return a copy of it */
-  struct sr_nat_mapping *mapping = NULL;
-
-  pthread_mutex_unlock(&(nat->lock));
-  return mapping;
 }
