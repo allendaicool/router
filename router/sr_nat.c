@@ -560,6 +560,8 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
         printf("Seconds since mapping was updated %f\n",seconds);
 
         int timedout = 0;
+        if (mapping->type == nat_mapping_icmp) printf("ICMP mapping\n");
+        if (mapping->type == nat_mapping_tcp) printf("TCP mapping\n");
         switch (mapping->type) {
             case nat_mapping_icmp:
             {
