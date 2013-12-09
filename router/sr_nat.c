@@ -552,18 +552,96 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
 
     struct sr_nat *nat = (struct sr_nat*)nat_ptr;
 
-    /* handle periodic tasks here */
+    /* Timeout mappings */
+
     struct sr_nat_mapping *mapping = nat->mappings;
     while (mapping != NULL) {
         double seconds = difftime(curtime,mapping->last_updated);
         printf("Seconds since mapping was updated %f\n",seconds);
+
+        int timedout = 0;
+        switch (mapping->type) {
+            case nat_mapping_icmp:
+            {
+                if (seconds > 5) timedout = 1;
+                break;
+            }
+            case nat_mapping_tcp:
+            {
+
+                /* Timeout each connection seperately for TCP */
+
+                struct sr_nat_connection *conn = mapping->conns;
+                while (conn != NULL) {
+                    int transitory = 1;
+                    if (conn->seen_external_syn && conn->seen_internal_syn) {
+                        transitory = 0;
+                    }
+                    if (conn->seen_external_fin && conn->seen_internal_fin) {
+                        transitory = 1;
+                    }
+                    double seconds = difftime(curtime,conn->last_updated);
+
+                    /* timeout connection */
+
+                    int conn_timedout = 0;
+
+                    if (transitory) {
+                        if (seconds > 2) {
+                            conn_timedout = 1;
+                        }
+                    }
+                    if (!transitory) {
+                        if (seconds > 10) {
+                            conn_timedout = 1;
+                        }
+                    }
+
+                    /* remove connection if timed out */
+
+                    struct sr_nat_connection *freebuf = NULL;
+                    if (conn_timedout == 1) {
+                        if (conn->next) {
+                            conn->next->prev = conn->prev;
+                        }
+                        if (conn->prev) {
+                            conn->prev->next = conn->next;
+                        }
+                        if (conn->prev == NULL) {
+                            mapping->conns = conn->next;
+                        }
+                        freebuf = conn;
+                    }
+                    conn = conn->next;
+                    if (freebuf != NULL) free(freebuf);
+                }
+                /* If all our connections are gone, timeout the mapping */
+                if (mapping->conns == NULL) timedout = 1;
+                break;
+            }
+        }
+
+        if (timedout) {
+            if (mapping->next) {
+                mapping->next->prev = mapping->prev;
+            }
+            if (mapping->prev) {
+                mapping->prev->next = mapping->next;
+            }
+            if (mapping->prev == NULL) {
+                nat->mappings = mapping->next;
+            }
+        }
         mapping = mapping->next;
     }
+
+    /* Timeout unsolicited SYN packets */
 
     struct sr_tcp_incoming *incoming = nat->incoming;
     while (incoming != NULL) {
         double seconds = difftime(curtime,incoming->syn_arrived);
         printf("Seconds since incoming SYN was received %f\n",seconds);
+        struct sr_tcp_incoming *freebuf = NULL;
         if (seconds >= 5) {
             printf("Removing SYN and sending ICMP error\n");
 
@@ -589,12 +667,10 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
             if (incoming->prev == NULL) {
                 nat->incoming = incoming->next;
             }
-            struct sr_tcp_incoming *buf = incoming;
-            incoming = incoming->next;
-            free(buf);
-            if (incoming == NULL) break;
+            freebuf = incoming;
         }
         incoming = incoming->next;
+        if (freebuf != NULL) free(freebuf);
     }
 
     pthread_mutex_unlock(&(nat->lock));

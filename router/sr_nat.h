@@ -32,6 +32,8 @@ struct sr_nat_connection {
     uint32_t ip_dst;
     uint16_t port_dst;
 
+    time_t last_updated;
+
     struct sr_nat_connection *next;
     struct sr_nat_connection *prev;
 };
