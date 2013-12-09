@@ -627,7 +627,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
         }
 
         struct sr_nat_mapping *freemap = NULL;
-        /*if (timedout) {
+        if (timedout) {
             if (mapping->next) {
                 mapping->next->prev = mapping->prev;
             }
@@ -638,7 +638,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
                 nat->mappings = mapping->next;
             }
             freemap = mapping;
-        }*/
+        }
         mapping = mapping->next;
         if (freemap != NULL) free(freemap);
     }
