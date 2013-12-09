@@ -234,6 +234,7 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
                             new_incoming->ip_ext = ip_hdr->ip_src;
                             new_incoming->aux_ext = aux_value;
                             new_incoming->syn_arrived = time(NULL);
+                            memcpy(new_incoming->data,ip_hdr,ICMP_DATA_SIZE);
 
                             /* Insert into the linked list */
                             if (sr->nat.incoming) sr->nat.incoming->prev = new_incoming;
@@ -565,6 +566,20 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
         printf("Seconds since incoming SYN was received %f\n",seconds);
         if (seconds >= 5) {
             printf("Removing SYN and sending ICMP error\n");
+
+            /* Send the ICMP */
+
+            sr_try_send_ip_packet(sr, ip_hdr->ip_src, 0,
+                sr_build_icmp_t3_packet(
+                    ICMP_TYPE_PORT_UNREACHABLE,
+                    ICMP_CODE_PORT_UNREACHABLE,
+                    (uint8_t*)incoming->data
+                ),
+                NULL
+            );
+            
+            /* Remove from the chain */
+
             if (incoming->next) {
                 incoming->next->prev = incoming->prev;
             }

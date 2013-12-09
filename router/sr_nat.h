@@ -56,6 +56,7 @@ struct sr_tcp_incoming {
     uint32_t ip_ext; /* external ip addr */
     uint16_t aux_ext; /* external port */
     time_t syn_arrived; /* use to timeout and send ICMP error */
+    uint8_t data[ICMP_DATA_SIZE];
     struct sr_tcp_incoming *next;
     struct sr_tcp_incoming *prev;
 };
