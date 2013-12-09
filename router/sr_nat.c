@@ -353,7 +353,7 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
             /* Matches will match on IP and port */
             char* ip_dst_str = ip_to_str(ip_dst);
             char* incoming_str = ip_to_str(incoming->ip_ext);
-            printf("Checking if incoming (%s,%i) == mapping (%s,%i)\n",ip_dst_str,ntohs(port_dst),incoming_str,ntohs(incoming->aux_ext));
+            printf("Checking if incoming (%s,%i) == mapping (%s,%i)\n",ip_dst_str,ntohs(port_dst),incoming_str,ntohs(incoming->aux_int));
             free(ip_dst_str);
             free(incoming_str);
 
