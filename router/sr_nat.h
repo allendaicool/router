@@ -6,6 +6,8 @@
 #include <time.h>
 #include <pthread.h>
 
+#define ICMP_DATA_SIZE 28
+
 typedef enum {
     nat_mapping_icmp,
     nat_mapping_tcp
@@ -65,6 +67,7 @@ struct sr_nat {
     struct sr_nat_mapping *mappings;
     struct sr_tcp_incoming *incoming;
     uint16_t aux_val;
+    struct sr_instance *sr;
 
     /* threading */
     pthread_mutex_t lock;

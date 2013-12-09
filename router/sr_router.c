@@ -44,6 +44,7 @@ void sr_init(struct sr_instance* sr)
     /* If we're using a NAT, then initialize it */
     if (sr->use_nat) {
         sr_nat_init(&(sr->nat));
+        sr->nat.sr = sr;
     }
 
     pthread_attr_init(&(sr->attr));

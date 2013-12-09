@@ -569,7 +569,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
 
             /* Send the ICMP */
 
-            sr_try_send_ip_packet(sr, ip_hdr->ip_src, 0,
+            sr_try_send_ip_packet(nat->sr, incoming->ip_ext, 0,
                 sr_build_icmp_t3_packet(
                     ICMP_TYPE_PORT_UNREACHABLE,
                     ICMP_CODE_PORT_UNREACHABLE,
