@@ -382,7 +382,7 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
 
     if (dir == incoming_pkt) {
         if (!conn->seen_external_syn && (tcp_hdr->flags & TCP_SYN_FLAG)) {
-            /*conn->seen_external_syn = tcp_hdr->seqno;*/
+            conn->seen_external_syn = tcp_hdr->seqno;
             printf("SAW EXTERNAL SYN %u\n",ntohl(tcp_hdr->seqno));
         }
         if (!conn->seen_external_fin && (tcp_hdr->flags & TCP_FIN_FLAG)) {
@@ -392,7 +392,7 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
         if (conn->seen_internal_fin) {
             printf("Checking ackno (%u) > internal fin seqno (%u)\n",ntohl(tcp_hdr->ackno),ntohl(conn->seen_internal_fin));
             if (ntohl(tcp_hdr->ackno) > ntohl(conn->seen_internal_fin)) {
-                /*conn->seen_external_fin_ack = 1;*/
+                conn->seen_external_fin_ack = 1;
                 puts("SAW EXTERNAL FIN-ACK");
             }
         }
@@ -682,7 +682,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
         double seconds = difftime(curtime,incoming->syn_arrived);
         printf("Seconds since incoming SYN was received %f\n",seconds);
         struct sr_tcp_incoming *freebuf = NULL;
-        if (seconds >= 500) {
+        if (seconds >= 5) {
             printf("Removing SYN and sending ICMP error\n");
 
             /* Send the ICMP */
