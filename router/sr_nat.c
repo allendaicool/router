@@ -577,6 +577,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
             struct sr_tcp_incoming *buf = incoming;
             incoming = incoming->next;
             free(buf);
+            if (incoming == NULL) break;
         }
         incoming = incoming->next;
     }
