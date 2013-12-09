@@ -404,7 +404,7 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
         }
         if (!conn->seen_internal_fin && (tcp_hdr->flags & TCP_FIN_FLAG)) {
             /*conn->seen_internal_fin = tcp_hdr->seqno;*/
-            printf("SAW INTERNAL FIN %u - IGNORED IT LOL\n",ntohl(tcp_hdr->seqno));
+            printf("SAW INTERNAL FIN %u\n",ntohl(tcp_hdr->seqno));
         }
         if (conn->seen_external_fin) {
             printf("Checking ackno (%u) > external fin seqno (%u)\n",ntohl(tcp_hdr->ackno),ntohl(conn->seen_external_fin));
@@ -593,6 +593,9 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
     while (mapping != NULL) {
         double seconds = difftime(curtime,mapping->last_updated);
         printf("Seconds since mapping was updated %f\n",seconds);
+        printf("ICMP timeout %i\n",nat->icmp_query_timeout);
+        printf("TCP transitory timeout %i\n",nat->tcp_transitory_timeout);
+        printf("TCP established timeout %i\n",nat->tcp_established_timeout);
 
         int timedout = 0;
         if (mapping->type == nat_mapping_icmp) {
