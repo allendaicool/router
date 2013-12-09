@@ -564,7 +564,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
         double seconds = difftime(curtime,incoming->syn_arrived);
         printf("Seconds since incoming SYN was received %f\n",seconds);
         if (seconds >= 5) {
-            printf("Removing SYN and sending ICMP error");
+            printf("Removing SYN and sending ICMP error\n");
             if (incoming->next) {
                 incoming->next->prev = incoming->prev;
             }
@@ -574,6 +574,9 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
             if (incoming->prev == NULL) {
                 nat->incoming = incoming->next;
             }
+            struct sr_tcp_incoming *buf = incoming;
+            incoming = incoming->next;
+            free(buf);
         }
         incoming = incoming->next;
     }
