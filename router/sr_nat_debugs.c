@@ -146,9 +146,11 @@ void sr_rewrite_packet(struct sr_instance* sr, sr_ip_hdr_t* ip_hdr, unsigned int
         {
             sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
             if (dir == incoming_pkt) {
+                printf("Rewriting incoming packet to dst_port %i\n",ntohs(mapping->aux_int));
                 tcp_hdr->dst_port = mapping->aux_int;
             }
             else if (dir == outgoing_pkt) {
+                printf("Rewriting outgoing packet to src_port %i\n",ntohs(mapping->aux_ext));
                 tcp_hdr->src_port = mapping->aux_ext;
             }
             tcp_hdr->cksum = cksum_tcp(ip_hdr,tcp_hdr,len-sizeof(sr_ip_hdr_t));
@@ -177,6 +179,7 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
             if (mapping_type == nat_mapping_tcp) {
                 sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
                 if (!(tcp_hdr->flags & TCP_SYN_FLAG)) {
+                    puts("bad TCP packet detected");
                     pthread_mutex_unlock(&(sr->nat.lock));
                     return NULL;
                 }
@@ -220,6 +223,8 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
                     /* Queue unsolicited incoming TCP SYN packets for ICMP errors if they time out */
                     sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t*)(((uint8_t*)ip_hdr)+sizeof(sr_ip_hdr_t));
                     if (tcp_hdr->flags & TCP_SYN_FLAG) {
+                        printf("Unsolicited inbound SYN detected\n");
+
                         struct sr_tcp_incoming *incomings = sr->nat.incoming;
                         while (incomings != NULL) {
                             if ((incomings->ip_ext == ip_hdr->ip_src) && (incomings->aux_ext == aux_value)) break;
@@ -239,6 +244,7 @@ struct sr_nat_mapping *sr_generate_mapping(struct sr_instance* sr,
                             sr->nat.incoming = new_incoming;
                             new_incoming->prev = NULL;
                         }
+                        else printf("SYN already registered\n");
                     }
                     break;
                 }
@@ -265,22 +271,34 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
     /* Find the actual mapping for this value */
 
     struct sr_nat_mapping *mapping = sr->nat.mappings;
+    printf("Looking up mapping for TCP connection modification\n");
     while (mapping != NULL) {
         if (dir == incoming_pkt) {
+            printf("Mapping (%i), Observed (%i).\n",ntohs(mapping->aux_ext),ntohs(tcp_hdr->dst_port));
             if (tcp_hdr->dst_port == mapping->aux_ext) {
                 break;
             }
         }
         else if (dir == outgoing_pkt) {
+            char* temp_mapping = ip_to_str(mapping->ip_int);
+            char* temp_test = ip_to_str(ip_hdr->ip_src);
+            printf("Mapping (%i, %s), Observed (%i, %s).\n",ntohs(mapping->aux_int),temp_mapping,ntohs(tcp_hdr->src_port),temp_test);
+            free(temp_mapping);
+            free(temp_test);
+
             if ((ip_hdr->ip_src == mapping->ip_int) && (tcp_hdr->src_port == mapping->aux_int)) {
                 break;
             }
+        }
+        else {
+            printf("Packet direction is impossible value\n");
         }
         mapping = mapping->next;
     }
 
     if (mapping == NULL) {
         /* This should never happen, since we just checked that mappings are non-null before we called this function */
+        printf("TCP NOTE CONNECTION has failed to find a mapping. This shouldn't happen. Go check it out. Non-fatal.");
         return;
     }
 
@@ -298,10 +316,12 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
         port_dst = tcp_hdr->dst_port;
     }
 
+    printf("Looking up connection mapping\n");
     struct sr_nat_connection *conn = mapping->conns;    
     char* temp_test = ip_to_str(ip_dst);
     while (conn != NULL) {
         char* temp_mapping = ip_to_str(conn->ip_dst);
+        printf("Connection mapping (%i, %s), Observed (%i, %s).\n",ntohs(conn->port_dst),temp_mapping,ntohs(port_dst),temp_test);
         if (conn->ip_dst == ip_dst && conn->port_dst == port_dst) {
             break;
         }
@@ -312,6 +332,7 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
     /* Create a connection if there isn't one already */
 
     if (conn == NULL) {
+        printf("Didn't find a connection, so we're creating a new one\n");
         conn = malloc(sizeof(struct sr_nat_connection));
         memset(conn,0,sizeof(struct sr_nat_connection));
         conn->ip_dst = ip_dst;
@@ -360,26 +381,32 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
     if (dir == incoming_pkt) {
         if (!conn->seen_external_syn && (tcp_hdr->flags & TCP_SYN_FLAG)) {
             conn->seen_external_syn = tcp_hdr->seqno;
+            printf("SAW EXTERNAL SYN %u\n",ntohl(tcp_hdr->seqno));
         }
         if (!conn->seen_external_fin && (tcp_hdr->flags & TCP_FIN_FLAG)) {
             conn->seen_external_fin = tcp_hdr->seqno;
+            printf("SAW EXTERNAL FIN %u\n",ntohl(tcp_hdr->seqno));
         }
         if (conn->seen_internal_fin) {
             if (ntohl(tcp_hdr->ackno) > ntohl(conn->seen_internal_fin)) {
                 conn->seen_external_fin_ack = 1;
+                puts("SAW EXTERNAL FIN-ACK");
             }
         }
     }
     if (dir == outgoing_pkt) {
         if (!conn->seen_internal_syn && (tcp_hdr->flags & TCP_SYN_FLAG)) {
             conn->seen_internal_syn = tcp_hdr->seqno;
+            printf("SAW INTERNAL SYN %u\n",ntohl(tcp_hdr->seqno));
         }
         if (!conn->seen_internal_fin && (tcp_hdr->flags & TCP_FIN_FLAG)) {
             conn->seen_internal_fin = tcp_hdr->seqno;
+            printf("SAW INTERNAL FIN %u\n",ntohl(tcp_hdr->seqno));
         }
         if (conn->seen_external_fin) {
             if (ntohl(tcp_hdr->ackno) > ntohl(conn->seen_external_fin)) {
                 conn->seen_internal_fin_ack = 1;
+                puts("SAW INTERNAL FIN-ACK");
             }
         }
     }
@@ -387,6 +414,8 @@ void sr_tcp_note_connections(struct sr_instance* sr, sr_ip_hdr_t *ip_hdr, sr_tcp
     /* If we've seen both fin_ack's, then close up shop */
 
     if ((conn->seen_internal_fin_ack && conn->seen_external_fin_ack) || (tcp_hdr->flags & TCP_RST_FLAG)) {
+        if (tcp_hdr->flags & TCP_RST_FLAG) printf("RST packet seen\n");
+        printf("CLOSING CONNECTION\n");
         if (conn->prev) {
             conn->prev->next = conn->next;
         }
